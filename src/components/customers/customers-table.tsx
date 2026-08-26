@@ -37,6 +37,7 @@ export async function CustomersTable({ customers, tags, employees }: CustomersTa
             <TableHead className="text-right">{t("table.orders")}</TableHead>
             <TableHead className="text-right">{t("table.delivered")}</TableHead>
             <TableHead className="text-right">{t("table.cancelled")}</TableHead>
+            <TableHead className="text-right">{t("table.pending")}</TableHead>
             <TableHead className="text-right">{t("table.totalSpend")}</TableHead>
             <TableHead>{t("table.lastOrder")}</TableHead>
             <TableHead>{t("table.score")}</TableHead>
@@ -57,6 +58,9 @@ export async function CustomersTable({ customers, tags, employees }: CustomersTa
               <TableCell className="text-right tabular-nums">{customer.total_orders}</TableCell>
               <TableCell className="text-right tabular-nums">{customer.delivered_orders}</TableCell>
               <TableCell className="text-right tabular-nums">{customer.cancelled_orders}</TableCell>
+              <TableCell className="text-right tabular-nums">
+                {Math.max(0, customer.total_orders - customer.delivered_orders - customer.cancelled_orders - customer.returned_orders)}
+              </TableCell>
               <TableCell className="text-right tabular-nums">{currency.format(customer.total_spend)}</TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {customer.last_order_at ? format(new Date(customer.last_order_at), "MMM d, yyyy") : "—"}
