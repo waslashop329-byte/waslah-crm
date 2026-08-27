@@ -8,6 +8,13 @@ import { enrollEligibleInactiveCustomers, processDueCampaignSteps } from "@/lib/
 // bearer-secret auth, no Supabase session, provider-independent — call it
 // from Vercel Cron, n8n, GitHub Actions, or a plain curl-based scheduler.
 //
+// Both GET and POST run the identical job. GET exists specifically because
+// Vercel Cron only ever sends GET requests; POST is kept for manual/curl/n8n
+// triggering, matching how this was originally tested. Vercel automatically
+// attaches `Authorization: Bearer <CRON_SECRET>` to its cron requests when a
+// CRON_SECRET env var is set — set it to the same value as CRON_API_SECRET
+// below and no extra code is needed to recognize Vercel's own calls.
+//
 // Recomputes things that can go *silently stale purely from the passage of
 // time* with no new CRM event to trigger a recalculation (a score's "active
 // in the last 30 days" rule decays even though nothing happened), plus a
@@ -21,7 +28,15 @@ import { enrollEligibleInactiveCustomers, processDueCampaignSteps } from "@/lib/
 // anything because an admin/marketing user explicitly created it and flipped
 // it active in the /campaigns UI; this job just executes what they configured,
 // the same way it already executes score recalculation rules someone configured.
+export async function GET(request: NextRequest) {
+  return runMaintenance(request);
+}
+
 export async function POST(request: NextRequest) {
+  return runMaintenance(request);
+}
+
+async function runMaintenance(request: NextRequest) {
   const expectedSecret = process.env.CRON_API_SECRET;
   if (!expectedSecret) {
     return NextResponse.json({ error: "CRON_API_SECRET is not configured" }, { status: 503 });
