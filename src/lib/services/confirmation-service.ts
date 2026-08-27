@@ -4,6 +4,7 @@ import { recordCustomerEvent } from "@/lib/services/timeline-service";
 import { recordAudit } from "@/lib/services/audit-service";
 import { dispatchEvent } from "@/lib/events/dispatcher";
 import { ORDER_STATUS_EVENT } from "@/lib/events/event-types";
+import { distributeOrdersByLoad, type AgentLoad } from "@/lib/intelligence/confirmation/auto-assignment";
 import type { CallAttemptResult, OrderCallAttemptRow, OrderRow } from "@/lib/types/database";
 
 export async function assignOrder(actorId: string, orderId: string, agentId: string | null): Promise<OrderRow> {
@@ -23,6 +24,54 @@ export async function assignOrder(actorId: string, orderId: string, agentId: str
   });
 
   return order;
+}
+
+// Distributes every currently-unassigned pending/new order across active
+// employees, least-loaded first (Phase 14's "auto-assignment" ask) — one
+// click instead of assigning orders one by one. Reuses assignOrder() per
+// order so every assignment still gets the same audit-log entry a manual
+// assignment would.
+export async function autoAssignUnassignedOrders(actorId: string): Promise<{ assignedCount: number; perAgent: Record<string, number> }> {
+  const supabase = await createClient();
+
+  const { data: employees, error: employeesError } = await supabase.from("profiles").select("id").eq("is_active", true);
+  if (employeesError) throw new Error(employeesError.message);
+  if (!employees || employees.length === 0) return { assignedCount: 0, perAgent: {} };
+
+  const { data: openOrders, error: openOrdersError } = await supabase
+    .from("orders")
+    .select("assigned_to")
+    .not("assigned_to", "is", null)
+    .in("status", ["new", "pending"]);
+  if (openOrdersError) throw new Error(openOrdersError.message);
+
+  const loadByAgent = new Map<string, number>(employees.map((e) => [e.id, 0]));
+  for (const order of openOrders ?? []) {
+    if (order.assigned_to) loadByAgent.set(order.assigned_to, (loadByAgent.get(order.assigned_to) ?? 0) + 1);
+  }
+  const initialLoads: AgentLoad[] = employees.map((e) => ({ agentId: e.id, load: loadByAgent.get(e.id) ?? 0 }));
+
+  const { data: unassigned, error: unassignedError } = await supabase
+    .from("orders")
+    .select("id")
+    .is("assigned_to", null)
+    .in("status", ["new", "pending"])
+    .order("ordered_at", { ascending: true });
+  if (unassignedError) throw new Error(unassignedError.message);
+  if (!unassigned || unassigned.length === 0) return { assignedCount: 0, perAgent: {} };
+
+  const assignments = distributeOrdersByLoad(
+    unassigned.map((o) => o.id),
+    initialLoads,
+  );
+
+  const perAgent: Record<string, number> = {};
+  for (const [orderId, agentId] of assignments) {
+    await assignOrder(actorId, orderId, agentId);
+    perAgent[agentId] = (perAgent[agentId] ?? 0) + 1;
+  }
+
+  return { assignedCount: assignments.size, perAgent };
 }
 
 // Result -> the order status it drives, matching the same vocabulary

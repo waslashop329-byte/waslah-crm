@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Inbox } from "lucide-react";
-import { assignOrderAction, type ConfirmationActionState } from "@/app/(dashboard)/confirmation/actions";
+import { assignOrderAction, autoAssignAllAction, type ConfirmationActionState } from "@/app/(dashboard)/confirmation/actions";
 import { getDateFnsLocale } from "@/lib/date-locale";
 import type { Locale } from "@/i18n/request";
 import type { MissionOrder } from "@/lib/repositories/confirmation-repository";
@@ -30,8 +30,12 @@ export function UnassignedOrdersTable({ orders, employees, currentUserId }: { or
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border">
-      <Table>
+    <div className="flex flex-col gap-2">
+      <div className="flex justify-end">
+        <AutoAssignButton />
+      </div>
+      <div className="overflow-x-auto rounded-lg border">
+        <Table>
         <TableHeader>
           <TableRow>
             <TableHead>{t("table.order")}</TableHead>
@@ -46,8 +50,28 @@ export function UnassignedOrdersTable({ orders, employees, currentUserId }: { or
             <UnassignedRow key={order.id} order={order} employees={employees} currentUserId={currentUserId} />
           ))}
         </TableBody>
-      </Table>
+        </Table>
+      </div>
     </div>
+  );
+}
+
+function AutoAssignButton() {
+  const t = useTranslations("confirmation");
+  const [state, formAction, isPending] = useActionState(autoAssignAllAction, initialState);
+
+  useEffect(() => {
+    if (state.success) toast.success(t("unassigned.autoAssignDone", { count: state.assignedCount ?? 0 }));
+    if (state.error) toast.error(state.error);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  return (
+    <form action={formAction}>
+      <Button type="submit" size="sm" variant="outline" disabled={isPending}>
+        {isPending ? t("unassigned.autoAssigning") : t("unassigned.autoAssignAll")}
+      </Button>
+    </form>
   );
 }
 

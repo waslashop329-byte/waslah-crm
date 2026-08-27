@@ -5,16 +5,21 @@ import type { CallAttemptAnalysisRow, CallAttemptResult, OrderCallAttemptRow, Or
 
 export interface MissionOrder extends OrderRow {
   customer_full_name: string;
+  /** Lightweight attempt history (result + timestamp only) for SLA/escalation badges — never the full analysis. */
+  call_attempts: { result: CallAttemptResult; attempted_at: string }[];
 }
 
 // "Today's Mission": every order assigned to this agent that hasn't been
 // confirmed/cancelled/shipped yet — includes carry-over from previous days
 // (Part 7 explicitly wants pending work visible, not just what's dated today).
+// Ordering is already the priority queue Phase 14 asked for: oldest order
+// first, so nothing sits waiting indefinitely just because a newer order
+// happened to load above it.
 export async function getTodaysMission(agentId: string): Promise<MissionOrder[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("orders")
-    .select("*, customers(full_name)")
+    .select("*, customers(full_name), order_call_attempts(result, attempted_at)")
     .eq("assigned_to", agentId)
     .in("status", ["new", "pending"])
     .order("ordered_at", { ascending: true });
@@ -22,8 +27,11 @@ export async function getTodaysMission(agentId: string): Promise<MissionOrder[]>
   if (error) throw new Error(error.message);
 
   return (data ?? []).map((row) => {
-    const { customers, ...order } = row as OrderRow & { customers: { full_name: string } | null };
-    return { ...order, customer_full_name: customers?.full_name ?? "Unknown customer" };
+    const { customers, order_call_attempts, ...order } = row as OrderRow & {
+      customers: { full_name: string } | null;
+      order_call_attempts: { result: CallAttemptResult; attempted_at: string }[];
+    };
+    return { ...order, customer_full_name: customers?.full_name ?? "Unknown customer", call_attempts: order_call_attempts ?? [] };
   });
 }
 
@@ -31,7 +39,7 @@ export async function getUnassignedOrders(limit = 50): Promise<MissionOrder[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("orders")
-    .select("*, customers(full_name)")
+    .select("*, customers(full_name), order_call_attempts(result, attempted_at)")
     .is("assigned_to", null)
     .in("status", ["new", "pending"])
     .order("ordered_at", { ascending: true })
@@ -40,8 +48,11 @@ export async function getUnassignedOrders(limit = 50): Promise<MissionOrder[]> {
   if (error) throw new Error(error.message);
 
   return (data ?? []).map((row) => {
-    const { customers, ...order } = row as OrderRow & { customers: { full_name: string } | null };
-    return { ...order, customer_full_name: customers?.full_name ?? "Unknown customer" };
+    const { customers, order_call_attempts, ...order } = row as OrderRow & {
+      customers: { full_name: string } | null;
+      order_call_attempts: { result: CallAttemptResult; attempted_at: string }[];
+    };
+    return { ...order, customer_full_name: customers?.full_name ?? "Unknown customer", call_attempts: order_call_attempts ?? [] };
   });
 }
 

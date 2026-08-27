@@ -525,6 +525,10 @@
       "amount": "Amount",
       "ordered": "Ordered"
     },
+    "alerts": {
+      "escalate": "Escalate",
+      "overdue": "Overdue"
+    },
     "mission": {
       "clearTitle": "Mission clear",
       "clearDescription": "No pending orders assigned to you right now.",
@@ -544,7 +548,8 @@
       "reasonDeliveryTime": "Delivery time",
       "reasonProductMismatch": "Product mismatch",
       "reasonOther": "Other",
-      "attemptLogged": "Call attempt logged"
+      "attemptLogged": "Call attempt logged",
+      "lastAttemptRecent": "Last attempt {hours, plural, =0 {just now} one {# hour ago} other {# hours ago}}"
     },
     "unassigned": {
       "allCaughtUpTitle": "All caught up",
@@ -552,7 +557,10 @@
       "assignTo": "Assign to",
       "assigning": "Assigning…",
       "assign": "Assign",
-      "orderAssigned": "Order assigned"
+      "orderAssigned": "Order assigned",
+      "autoAssignAll": "Auto-assign all",
+      "autoAssigning": "Assigning…",
+      "autoAssignDone": "{count, plural, =0 {No orders to assign} one {Assigned # order} other {Assigned # orders}}"
     }
   },
   "analytics": {

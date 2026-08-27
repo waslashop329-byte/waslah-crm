@@ -3,11 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth/permissions";
-import { logCallAttempt, assignOrder } from "@/lib/services/confirmation-service";
+import { logCallAttempt, assignOrder, autoAssignUnassignedOrders } from "@/lib/services/confirmation-service";
 
 export interface ConfirmationActionState {
   error?: string;
   success?: boolean;
+  assignedCount?: number;
 }
 
 const callAttemptSchema = z.object({
@@ -36,6 +37,18 @@ export async function logCallAttemptAction(_prevState: ConfirmationActionState, 
 
   revalidatePath("/confirmation");
   return { success: true };
+}
+
+export async function autoAssignAllAction(): Promise<ConfirmationActionState> {
+  const user = await requirePermission("orders.assign");
+
+  try {
+    const { assignedCount } = await autoAssignUnassignedOrders(user.userId);
+    revalidatePath("/confirmation");
+    return { success: true, assignedCount };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to auto-assign orders" };
+  }
 }
 
 const assignSchema = z.object({ orderId: z.string().uuid(), agentId: z.string().uuid() });

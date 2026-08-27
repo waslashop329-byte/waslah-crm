@@ -525,6 +525,10 @@
       "amount": "المبلغ",
       "ordered": "تاريخ الطلب"
     },
+    "alerts": {
+      "escalate": "يحتاج تصعيد",
+      "overdue": "متأخر"
+    },
     "mission": {
       "clearTitle": "لا توجد مهام",
       "clearDescription": "لا توجد طلبات معلّقة مُسندة إليك الآن.",
@@ -544,7 +548,8 @@
       "reasonDeliveryTime": "مدة التسليم",
       "reasonProductMismatch": "المنتج غير مطابق",
       "reasonOther": "أخرى",
-      "attemptLogged": "تم تسجيل محاولة الاتصال"
+      "attemptLogged": "تم تسجيل محاولة الاتصال",
+      "lastAttemptRecent": "{hours, plural, =0 {آخر محاولة الآن} one {آخر محاولة منذ ساعة} two {آخر محاولة منذ ساعتين} few {آخر محاولة منذ # ساعات} other {آخر محاولة منذ # ساعة}}"
     },
     "unassigned": {
       "allCaughtUpTitle": "لا يوجد متبقٍ",
@@ -552,7 +557,10 @@
       "assignTo": "إسناد إلى",
       "assigning": "جارٍ الإسناد…",
       "assign": "إسناد",
-      "orderAssigned": "تم إسناد الطلب"
+      "orderAssigned": "تم إسناد الطلب",
+      "autoAssignAll": "إسناد الكل تلقائيًا",
+      "autoAssigning": "جارٍ الإسناد…",
+      "autoAssignDone": "{count, plural, =0 {لا توجد طلبات لإسنادها} one {تم إسناد طلب واحد} two {تم إسناد طلبين} few {تم إسناد # طلبات} other {تم إسناد # طلب}}"
     }
   },
   "analytics": {
