@@ -734,6 +734,46 @@ export type CampaignEnrollmentRow = {
   completed_at: string | null;
 };
 
+export type OfferRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  loyalty_tier_id: string | null;
+  segment_id: string | null;
+  starts_at: string;
+  ends_at: string;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CouponDiscountType = "percentage" | "fixed";
+
+export type CouponRow = {
+  id: string;
+  code: string;
+  discount_type: CouponDiscountType;
+  discount_value: number;
+  loyalty_tier_id: string | null;
+  segment_id: string | null;
+  usage_limit: number | null;
+  expires_at: string | null;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CouponRedemptionRow = {
+  id: string;
+  coupon_id: string;
+  customer_id: string;
+  related_order_id: string | null;
+  redeemed_by: string | null;
+  redeemed_at: string;
+};
+
 export type CustomerAcquisitionRow = {
   customer_id: string;
   source: string | null;
@@ -897,6 +937,69 @@ export type Database = {
           },
           {
             foreignKeyName: "campaign_enrollments_customer_id_fkey";
+            columns: ["customer_id"];
+            isOneToOne: false;
+            referencedRelation: "customers";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      offers: Table<
+        OfferRow,
+        Partial<Omit<OfferRow, "id" | "created_at" | "updated_at">> & { name: string; starts_at: string; ends_at: string },
+        Partial<Omit<OfferRow, "id" | "created_at" | "updated_at">>,
+        [
+          {
+            foreignKeyName: "offers_loyalty_tier_id_fkey";
+            columns: ["loyalty_tier_id"];
+            isOneToOne: false;
+            referencedRelation: "loyalty_tiers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "offers_segment_id_fkey";
+            columns: ["segment_id"];
+            isOneToOne: false;
+            referencedRelation: "segments";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      coupons: Table<
+        CouponRow,
+        Partial<Omit<CouponRow, "id" | "created_at" | "updated_at">> & { code: string; discount_type: CouponDiscountType; discount_value: number },
+        Partial<Omit<CouponRow, "id" | "created_at" | "updated_at">>,
+        [
+          {
+            foreignKeyName: "coupons_loyalty_tier_id_fkey";
+            columns: ["loyalty_tier_id"];
+            isOneToOne: false;
+            referencedRelation: "loyalty_tiers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "coupons_segment_id_fkey";
+            columns: ["segment_id"];
+            isOneToOne: false;
+            referencedRelation: "segments";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      coupon_redemptions: Table<
+        CouponRedemptionRow,
+        Omit<CouponRedemptionRow, "id" | "redeemed_at" | "related_order_id"> & { redeemed_at?: string; related_order_id?: string | null },
+        Partial<Omit<CouponRedemptionRow, "id" | "coupon_id" | "customer_id">>,
+        [
+          {
+            foreignKeyName: "coupon_redemptions_coupon_id_fkey";
+            columns: ["coupon_id"];
+            isOneToOne: false;
+            referencedRelation: "coupons";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "coupon_redemptions_customer_id_fkey";
             columns: ["customer_id"];
             isOneToOne: false;
             referencedRelation: "customers";

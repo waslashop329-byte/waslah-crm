@@ -16,6 +16,7 @@ import {
   Circle,
   MessageSquare,
   Phone,
+  Ticket,
   type LucideIcon,
 } from "lucide-react";
 
@@ -42,6 +43,7 @@ const EVENT_CONFIG: Record<string, { icon: LucideIcon; key: string; tone: string
   "score.changed": { icon: TrendingUp, key: "scoreChanged", tone: "text-blue-600 dark:text-blue-400" },
   "automation.triggered": { icon: Sparkles, key: "automationTriggered", tone: "text-purple-600 dark:text-purple-400" },
   "communication.sent": { icon: MessageSquare, key: "communicationSent", tone: "text-blue-600 dark:text-blue-400" },
+  "coupon.redeemed": { icon: Ticket, key: "couponRedeemed", tone: "text-emerald-600 dark:text-emerald-400" },
 };
 
 export function getEventConfig(eventType: string, t: (key: string) => string) {
