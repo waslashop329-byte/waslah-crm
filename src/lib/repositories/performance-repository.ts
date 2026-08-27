@@ -1,6 +1,12 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { calculateAgentPerformance, calculateGoalProgress, type AgentPerformance, type GoalProgress } from "@/lib/intelligence/performance/agent-performance";
+import {
+  calculateAvgFirstResponseHours,
+  calculateAvgComplaintResolutionHours,
+  calculateWorkloadBalance,
+  type WorkloadBalance,
+} from "@/lib/intelligence/performance/ops-metrics";
 import type { AgentGoalRow, PerformanceConfigRow } from "@/lib/types/database";
 
 export async function getPerformanceConfig(): Promise<PerformanceConfigRow> {
@@ -77,4 +83,62 @@ export async function getAgentGoal(agentId: string, periodMonth: string): Promis
 
 export function getGoalProgressForAgent(agentPerformance: AgentPerformanceRow, goal: AgentGoalRow | null): GoalProgress {
   return calculateGoalProgress(agentPerformance, goal?.target_confirmed_orders ?? 0, goal?.target_revenue ?? 0);
+}
+
+export interface TeamOpsMetrics {
+  avgFirstResponseHours: number | null;
+  avgComplaintResolutionHours: number | null;
+  workloadBalance: WorkloadBalance | null;
+}
+
+// Phase 14's "CRM operational metrics" — team-efficiency numbers, distinct
+// from the revenue-attribution leaderboard above. All three read straight
+// from source tables (order_call_attempts, complaints, orders), never a
+// stored/cached figure, same "recompute, never drift" convention as the rest
+// of this codebase.
+export async function getTeamOpsMetrics(days = 30): Promise<TeamOpsMetrics> {
+  const supabase = await createClient();
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: orders, error: ordersError } = await supabase
+    .from("orders")
+    .select("ordered_at, order_call_attempts(attempted_at)")
+    .gte("ordered_at", since);
+  if (ordersError) throw new Error(ordersError.message);
+
+  const avgFirstResponseHours = calculateAvgFirstResponseHours(
+    (orders ?? []).map((o) => {
+      const attempts = (o.order_call_attempts as { attempted_at: string }[]) ?? [];
+      const firstAttemptAt = attempts.length > 0 ? attempts.map((a) => a.attempted_at).sort()[0] : null;
+      return { orderedAt: o.ordered_at, firstAttemptAt };
+    }),
+  );
+
+  const { data: complaints, error: complaintsError } = await supabase
+    .from("complaints")
+    .select("created_at, status, updated_at")
+    .gte("created_at", since);
+  if (complaintsError) throw new Error(complaintsError.message);
+
+  const avgComplaintResolutionHours = calculateAvgComplaintResolutionHours(
+    (complaints ?? []).map((c) => ({ createdAt: c.created_at, status: c.status, updatedAt: c.updated_at })),
+  );
+
+  const { data: employees, error: employeesError } = await supabase.from("profiles").select("id").eq("is_active", true);
+  if (employeesError) throw new Error(employeesError.message);
+
+  const { data: openOrders, error: openOrdersError } = await supabase
+    .from("orders")
+    .select("assigned_to")
+    .not("assigned_to", "is", null)
+    .in("status", ["new", "pending"]);
+  if (openOrdersError) throw new Error(openOrdersError.message);
+
+  const loadByAgent = new Map<string, number>((employees ?? []).map((e) => [e.id, 0]));
+  for (const order of openOrders ?? []) {
+    if (order.assigned_to) loadByAgent.set(order.assigned_to, (loadByAgent.get(order.assigned_to) ?? 0) + 1);
+  }
+  const workloadBalance = calculateWorkloadBalance(Array.from(loadByAgent.entries()).map(([agentId, openOrders]) => ({ agentId, openOrders })));
+
+  return { avgFirstResponseHours, avgComplaintResolutionHours, workloadBalance };
 }

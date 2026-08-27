@@ -638,6 +638,13 @@
     "noPermission": "ليس لديك صلاحية لعرض لوحة صدارة الأداء.",
     "noActivityTitle": "لا يوجد نشاط بعد",
     "noActivityDescription": "لا توجد طلبات مؤكدة أو متابعات منجزة خلال آخر 30 يومًا.",
+    "ops": {
+      "firstResponseTime": "متوسط وقت أول استجابة",
+      "complaintResolutionTime": "متوسط وقت حل الشكوى",
+      "workloadBalance": "فرق الحمل بين الموظفين",
+      "orders": " طلب",
+      "noData": " (لا توجد بيانات)"
+    },
     "rank": "#",
     "agent": "الموظف",
     "confirmed": "المؤكدة",

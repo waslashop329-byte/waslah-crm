@@ -638,6 +638,13 @@
     "noPermission": "You don't have permission to view the performance leaderboard.",
     "noActivityTitle": "No activity yet",
     "noActivityDescription": "No confirmed orders or completed follow-ups in the last 30 days.",
+    "ops": {
+      "firstResponseTime": "Avg. First Response",
+      "complaintResolutionTime": "Avg. Complaint Resolution",
+      "workloadBalance": "Workload Imbalance",
+      "orders": " orders",
+      "noData": " (no data)"
+    },
     "rank": "#",
     "agent": "Agent",
     "confirmed": "Confirmed",
