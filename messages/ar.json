@@ -679,7 +679,7 @@
       "daysAfterEnrollment": "يوم بعد التسجيل",
       "channelWhatsapp": "واتساب",
       "channelSms": "SMS",
-      "messagePlaceholder": "الرسالة — {{customer_name}} متاح كمتغيّر",
+      "messagePlaceholder": "الرسالة — '{{customer_name}}' متاح كمتغيّر",
       "addStep": "إضافة خطوة"
     }
   },

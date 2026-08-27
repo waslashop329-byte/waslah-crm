@@ -679,7 +679,7 @@
       "daysAfterEnrollment": "days after enrollment",
       "channelWhatsapp": "WhatsApp",
       "channelSms": "SMS",
-      "messagePlaceholder": "Message — {{customer_name}} is available as a placeholder",
+      "messagePlaceholder": "Message — '{{customer_name}}' is available as a placeholder",
       "addStep": "Add step"
     }
   },
