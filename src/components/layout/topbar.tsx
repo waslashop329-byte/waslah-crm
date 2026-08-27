@@ -14,6 +14,7 @@ import { NotificationBell } from "@/components/layout/notification-bell";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import { GlobalSearchBox } from "@/components/layout/global-search-box";
+import { MobileNav } from "@/components/layout/mobile-nav";
 import { getUnreadNotificationCount, listRecentNotifications } from "@/lib/repositories/notification-repository";
 import type { CurrentUserContext } from "@/lib/auth/session";
 
@@ -34,7 +35,8 @@ export async function Topbar({ user }: { user: CurrentUserContext }) {
   ]);
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-4 border-b bg-background px-4">
+    <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4 sm:gap-4">
+      <MobileNav />
       <GlobalSearchBox />
 
       <div className="ms-auto flex items-center gap-1">
