@@ -19,7 +19,10 @@
     "integrations": "Integrations",
     "automation": "Automation",
     "syncLogs": "Sync Logs",
-    "settings": "Settings"
+    "settings": "Settings",
+    "sections": {
+      "afterSales": "After-Sales"
+    }
   },
   "topbar": {
     "searchPlaceholder": "Search customers, orders, phone…",
@@ -65,7 +68,7 @@
       "repeatRevenue": "Repeat Revenue",
       "totalCustomers": "Total Customers",
       "newLast30d": "New (30d)",
-      "repeatCustomers": "Repeat Customers",
+      "repeatCustomers": "Retention",
       "vipCustomers": "VIP Customers",
       "excellentCustomers": "Excellent Customers",
       "trustedCustomers": "Trusted Customers",
@@ -138,6 +141,11 @@
       "scoreMin": "Score min",
       "scoreMax": "Score max",
       "lastOrderAfter": "Last order after",
+      "quickDate": {
+        "today": "Today",
+        "last7Days": "Last 7 days",
+        "last30Days": "Last 30 days"
+      },
       "customerSince": "Customer since",
       "sort": {
         "lastOrderDesc": "Last order (newest)",

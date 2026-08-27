@@ -19,7 +19,10 @@
     "integrations": "التكاملات",
     "automation": "الأتمتة",
     "syncLogs": "سجلات المزامنة",
-    "settings": "الإعدادات"
+    "settings": "الإعدادات",
+    "sections": {
+      "afterSales": "خدمة ما بعد البيع"
+    }
   },
   "topbar": {
     "searchPlaceholder": "ابحث عن عميل، طلب، رقم هاتف…",
@@ -65,7 +68,7 @@
       "repeatRevenue": "إيرادات العملاء المتكررين",
       "totalCustomers": "إجمالي العملاء",
       "newLast30d": "جدد (30 يوم)",
-      "repeatCustomers": "عملاء متكررون",
+      "repeatCustomers": "الاحتفاظ",
       "vipCustomers": "عملاء VIP",
       "excellentCustomers": "عملاء ممتازون",
       "trustedCustomers": "عملاء موثوقون",
@@ -138,6 +141,11 @@
       "scoreMin": "أقل تقييم",
       "scoreMax": "أعلى تقييم",
       "lastOrderAfter": "آخر طلب بعد",
+      "quickDate": {
+        "today": "اليوم",
+        "last7Days": "آخر 7 أيام",
+        "last30Days": "آخر 30 يوم"
+      },
       "customerSince": "عميل منذ",
       "sort": {
         "lastOrderDesc": "آخر طلب (الأحدث)",

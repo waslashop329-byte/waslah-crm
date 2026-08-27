@@ -15,6 +15,19 @@ import type { TagRow } from "@/lib/types/database";
 
 const STATUS_OPTIONS = ["active", "inactive", "blocked", "merged"] as const;
 
+function isoDateDaysAgo(days: number): string {
+  const now = new Date();
+  return new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+// Quick-select shortcuts for the "last order after" date field — additive,
+// the manual date picker right below stays available for any other date.
+const QUICK_DATE_OPTIONS = [
+  { key: "today", value: () => isoDateDaysAgo(0) },
+  { key: "last7Days", value: () => isoDateDaysAgo(7) },
+  { key: "last30Days", value: () => isoDateDaysAgo(30) },
+] as const;
+
 export function CustomersToolbar({ tags }: { tags: TagRow[] }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -211,6 +224,20 @@ export function CustomersToolbar({ tags }: { tags: TagRow[] }) {
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
               <Label className="text-xs">{t("lastOrderAfter")}</Label>
+              <div className="flex gap-1">
+                {QUICK_DATE_OPTIONS.map((option) => (
+                  <Button
+                    key={option.key}
+                    type="button"
+                    size="sm"
+                    variant={searchParams.get("lastOrderAfter") === option.value() ? "default" : "outline"}
+                    className="h-6 px-1.5 text-[11px]"
+                    onClick={() => pushParams({ lastOrderAfter: option.value() })}
+                  >
+                    {t(`quickDate.${option.key}`)}
+                  </Button>
+                ))}
+              </div>
               <Input
                 type="date"
                 className="h-8"

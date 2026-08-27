@@ -58,7 +58,7 @@ insert into public.scoring_rules (key, label, weight) values
 -- ============ Tags ============
 insert into public.tags (name, color) values
   ('VIP', '#a855f7'),
-  ('Repeat Customer', '#3b82f6'),
+  ('Retention', '#3b82f6'),
   ('Trusted Customer', '#22c55e'),
   ('High Risk', '#ef4444'),
   ('High Cancellation Risk', '#f97316'),
@@ -166,7 +166,7 @@ select c.id, t.id, 'manual'
 from public.customers c
 join (values
   ('Mona Abdel Fattah', 'VIP'),
-  ('Mona Abdel Fattah', 'Repeat Customer'),
+  ('Mona Abdel Fattah', 'Retention'),
   ('Salma Hossam', 'VIP'),
   ('Salma Hossam', 'High Value'),
   ('Youssef Nabil', 'High Risk'),

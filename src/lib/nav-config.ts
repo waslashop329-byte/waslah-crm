@@ -30,6 +30,8 @@ export interface NavItem {
   icon: LucideIcon;
   /** Set when the module isn't built yet; the page renders an EmptyState instead of a 404. */
   comingInPhase?: number;
+  /** Translation key under "nav.sections" — when set, a section header renders directly above this item. */
+  section?: string;
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -41,7 +43,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Analytics", key: "analytics", href: "/analytics", icon: LineChart },
   { label: "Win-back", key: "winBack", href: "/win-back", icon: UserX },
   { label: "Performance", key: "performance", href: "/performance", icon: Trophy },
-  { label: "Complaints", key: "complaints", href: "/complaints", icon: MessageCircleWarning },
+  { label: "Complaints", key: "complaints", href: "/complaints", icon: MessageCircleWarning, section: "afterSales" },
   { label: "Duplicates", key: "duplicates", href: "/duplicates", icon: Fingerprint },
   { label: "Segments", key: "segments", href: "/segments", icon: PieChart },
   { label: "Follow-ups", key: "followUps", href: "/follow-ups", icon: CalendarClock },
