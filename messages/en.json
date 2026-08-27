@@ -8,6 +8,7 @@
     "confirmation": "Confirmation",
     "analytics": "Analytics",
     "winBack": "Win-back",
+    "campaigns": "Campaigns",
     "performance": "Performance",
     "complaints": "Complaints",
     "duplicates": "Duplicates",
@@ -615,7 +616,7 @@
   },
   "winBack": {
     "title": "Win-back",
-    "subtitle": "Customers inactive 30+ days, staged by how long since their last order. Sending is manual — there's no scheduler yet to fire these automatically.",
+    "subtitle": "Customers inactive 30+ days, staged by how long since their last order. Sending here is manual — for a fully automatic version, create a Win-back campaign on the Campaigns page instead.",
     "restricted": "Restricted",
     "noPermission": "You don't have permission to send win-back messages.",
     "noCandidatesTitle": "No win-back candidates",
@@ -635,6 +636,49 @@
       "60d": "Hi {name}, it's been a while. Here's a product recommendation just for you.",
       "90d": "Hi {name}, we'd love to have you back — here's a special offer for your next order.",
       "120d": "Hi {name}, this is a final reminder — a strong offer is waiting for you if you come back."
+    }
+  },
+  "campaigns": {
+    "title": "Campaigns",
+    "subtitle": "Multi-step automated sequences — post-purchase follow-ups or fully automatic win-back, triggered by an event or a daily scan and processed by the scheduled maintenance job.",
+    "restricted": "Restricted",
+    "noPermission": "You don't have permission to view campaigns.",
+    "newCampaign": "New Campaign",
+    "createTitle": "Create Campaign",
+    "name": "Name",
+    "triggerType": "Trigger",
+    "triggerOrderDelivered": "Post-purchase (on delivery)",
+    "triggerCustomerInactive": "Win-back (inactive customer)",
+    "triggerHelp": "Post-purchase enrolls a customer the moment their order is delivered. Win-back enrolls customers as they cross the 30/60/90/120-day inactivity thresholds, scanned daily.",
+    "create": "Create Campaign",
+    "creating": "Creating…",
+    "created": "Campaign created",
+    "activated": "Campaign activated",
+    "deactivated": "Campaign deactivated",
+    "toggleActive": "Active",
+    "deleted": "Campaign deleted",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "deleting": "Deleting…",
+    "deleteConfirmTitle": "Delete \"{name}\"?",
+    "deleteConfirmDescription": "This can't be undone.",
+    "noCampaignsTitle": "No campaigns yet",
+    "noCampaignsDescription": "Create a campaign to automatically message customers after delivery or once they've gone quiet.",
+    "stepsCount": "{count, plural, one {# step} other {# steps}}",
+    "inactiveNote": "Inactive — won't enroll anyone or send anything until turned on.",
+    "stats": {
+      "active": "Active",
+      "completed": "Completed",
+      "exited": "Exited"
+    },
+    "steps": {
+      "title": "Steps",
+      "step": "Step {number}",
+      "daysAfterEnrollment": "days after enrollment",
+      "channelWhatsapp": "WhatsApp",
+      "channelSms": "SMS",
+      "messagePlaceholder": "Message — {{customer_name}} is available as a placeholder",
+      "addStep": "Add step"
     }
   },
   "performance": {

@@ -698,6 +698,42 @@ export type CommunicationRow = {
   created_at: string;
 };
 
+export type CampaignTriggerType = "order_delivered" | "customer_inactive";
+export type CampaignEnrollmentStatus = "active" | "completed" | "exited";
+
+export type CampaignRow = {
+  id: string;
+  name: string;
+  trigger_type: CampaignTriggerType;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CampaignStepRow = {
+  id: string;
+  campaign_id: string;
+  step_order: number;
+  delay_days: number;
+  channel: MessageChannel;
+  message_template: string;
+  created_at: string;
+};
+
+export type CampaignEnrollmentRow = {
+  id: string;
+  campaign_id: string;
+  customer_id: string;
+  related_order_id: string | null;
+  current_step_index: number;
+  next_send_at: string;
+  status: CampaignEnrollmentStatus;
+  exit_reason: string | null;
+  enrolled_at: string;
+  completed_at: string | null;
+};
+
 export type CustomerAcquisitionRow = {
   customer_id: string;
   source: string | null;
@@ -831,6 +867,42 @@ export type Database = {
       communications: Table<
         CommunicationRow,
         Partial<Omit<CommunicationRow, "id" | "created_at">> & { customer_id: string; channel: MessageChannel; body: string; status: CommunicationStatus; provider: string }
+      >;
+      campaigns: Table<CampaignRow, Partial<Omit<CampaignRow, "id" | "created_at" | "updated_at">> & { name: string; trigger_type: CampaignTriggerType }>;
+      campaign_steps: Table<
+        CampaignStepRow,
+        Omit<CampaignStepRow, "id" | "created_at">,
+        Partial<Omit<CampaignStepRow, "id" | "created_at" | "campaign_id">>,
+        [
+          {
+            foreignKeyName: "campaign_steps_campaign_id_fkey";
+            columns: ["campaign_id"];
+            isOneToOne: false;
+            referencedRelation: "campaigns";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      campaign_enrollments: Table<
+        CampaignEnrollmentRow,
+        Omit<CampaignEnrollmentRow, "id" | "enrolled_at"> & { enrolled_at?: string },
+        Partial<Omit<CampaignEnrollmentRow, "id" | "campaign_id" | "customer_id">>,
+        [
+          {
+            foreignKeyName: "campaign_enrollments_campaign_id_fkey";
+            columns: ["campaign_id"];
+            isOneToOne: false;
+            referencedRelation: "campaigns";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "campaign_enrollments_customer_id_fkey";
+            columns: ["customer_id"];
+            isOneToOne: false;
+            referencedRelation: "customers";
+            referencedColumns: ["id"];
+          },
+        ]
       >;
       customer_acquisition: Table<
         CustomerAcquisitionRow,

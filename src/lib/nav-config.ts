@@ -19,6 +19,7 @@ import {
   UserX,
   Trophy,
   MessageCircleWarning,
+  Megaphone,
 } from "lucide-react";
 
 export interface NavItem {
@@ -42,6 +43,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Confirmation", key: "confirmation", href: "/confirmation", icon: PhoneCall },
   { label: "Analytics", key: "analytics", href: "/analytics", icon: LineChart },
   { label: "Win-back", key: "winBack", href: "/win-back", icon: UserX },
+  { label: "Campaigns", key: "campaigns", href: "/campaigns", icon: Megaphone },
   { label: "Performance", key: "performance", href: "/performance", icon: Trophy },
   { label: "Complaints", key: "complaints", href: "/complaints", icon: MessageCircleWarning, section: "afterSales" },
   { label: "Duplicates", key: "duplicates", href: "/duplicates", icon: Fingerprint },
