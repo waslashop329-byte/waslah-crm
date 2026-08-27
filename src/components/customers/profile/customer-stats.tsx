@@ -21,11 +21,11 @@ export async function CustomerStats({ customer }: { customer: CustomerRow }) {
   );
 
   const stats: { label: string; value: string }[] = [
-    { label: t("totalOrders"), value: customer.total_orders.toLocaleString() },
-    { label: t("delivered"), value: customer.delivered_orders.toLocaleString() },
-    { label: t("cancelled"), value: customer.cancelled_orders.toLocaleString() },
-    { label: t("returned"), value: customer.returned_orders.toLocaleString() },
-    { label: t("pending"), value: pendingOrders.toLocaleString() },
+    { label: t("totalOrders"), value: customer.total_orders.toLocaleString("en-US") },
+    { label: t("delivered"), value: customer.delivered_orders.toLocaleString("en-US") },
+    { label: t("cancelled"), value: customer.cancelled_orders.toLocaleString("en-US") },
+    { label: t("returned"), value: customer.returned_orders.toLocaleString("en-US") },
+    { label: t("pending"), value: pendingOrders.toLocaleString("en-US") },
     { label: t("totalSpend"), value: currency.format(customer.total_spend) },
     { label: t("avgOrderValue"), value: currency.format(customer.avg_order_value) },
     { label: t("firstOrder"), value: customer.first_order_at ? format(new Date(customer.first_order_at), "MMM d, yyyy", { locale: dateLocale }) : "—" },

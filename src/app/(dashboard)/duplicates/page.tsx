@@ -46,7 +46,7 @@ export default async function DuplicatesPage({
     <div className="flex flex-1 flex-col gap-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-        <p className="text-sm text-muted-foreground">{t("candidateCount", { count: total.toLocaleString() })}</p>
+        <p className="text-sm text-muted-foreground">{t("candidateCount", { count: total.toLocaleString("en-US") })}</p>
       </div>
 
       <DuplicatesToolbar />

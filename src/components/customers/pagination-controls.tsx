@@ -32,7 +32,7 @@ export function PaginationControls({ page, pageSize, total, translationNamespace
   return (
     <div className="flex items-center justify-between border-t pt-3">
       <p className="text-xs text-muted-foreground">
-        {total === 0 ? t("noResults") : t("showing", { from, to, total: total.toLocaleString() })}
+        {total === 0 ? t("noResults") : t("showing", { from, to, total: total.toLocaleString("en-US") })}
       </p>
       <div className="flex items-center gap-2">
         <Button variant="outline" size="sm" disabled={page <= 1} asChild={page > 1}>

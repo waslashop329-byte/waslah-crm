@@ -42,7 +42,7 @@ export async function SegmentCard({ segment, memberCount, canManage }: SegmentCa
         ) : null}
       </CardHeader>
       <CardContent>
-        <p className="text-2xl font-semibold tabular-nums">{memberCount.toLocaleString()}</p>
+        <p className="text-2xl font-semibold tabular-nums">{memberCount.toLocaleString("en-US")}</p>
         <p className="text-xs text-muted-foreground">{t("customersLabel")}</p>
       </CardContent>
     </Card>

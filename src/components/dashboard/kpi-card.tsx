@@ -29,7 +29,7 @@ export function KpiCard({ label, value, icon: Icon, tone = "default", suffix, hr
       </CardHeader>
       <CardContent className="px-4">
         <p className={cn("text-2xl font-semibold tabular-nums", TONE_STYLES[tone])}>
-          {value.toLocaleString()}
+          {value.toLocaleString("en-US")}
           {suffix ? <span className="text-base">{suffix}</span> : null}
         </p>
       </CardContent>

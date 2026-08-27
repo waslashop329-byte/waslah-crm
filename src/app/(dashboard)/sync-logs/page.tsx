@@ -55,7 +55,7 @@ export default async function SyncLogsPage({
     <div className="flex flex-1 flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-        <p className="text-sm text-muted-foreground">{t("runCount", { count: total.toLocaleString() })}</p>
+        <p className="text-sm text-muted-foreground">{t("runCount", { count: total.toLocaleString("en-US") })}</p>
       </div>
 
       <FailedWebhooksPanel events={failedWebhooks} />
