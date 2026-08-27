@@ -2,6 +2,13 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { calculateCustomerProfitability, type CustomerProfitability } from "@/lib/intelligence/economics/customer-profitability";
 import { calculateCacBySource, type CacBySource } from "@/lib/intelligence/economics/cac";
+import {
+  calculateRepeatPurchaseRate,
+  calculateRetentionRate,
+  calculateChurnRate,
+  calculateBlendedCac,
+  calculateLtvToCacRatio,
+} from "@/lib/intelligence/economics/marketing-metrics";
 import type { OrderItemRow, OrderRow } from "@/lib/types/database";
 
 type OrderWithItems = Pick<OrderRow, "id" | "total_amount" | "ad_cost" | "shipping_cost"> & { order_items: OrderItemRow[] };
@@ -112,6 +119,57 @@ export async function getCacBySource(days = 90): Promise<CacBySource[]> {
       firstOrderAdCost: firstAdCostByCustomer.get(c.id) ?? null,
     })),
   );
+}
+
+export interface MarketingMetrics {
+  repeatPurchaseRate: number | null;
+  retentionRate30d: number | null;
+  churnRate30d: number | null;
+  avgLtv: number | null;
+  avgCac: number | null;
+  ltvToCacRatio: number | null;
+}
+
+// Phase 15 (growth roadmap) — the marketing formulas layered on top of data
+// that already exists from earlier phases (customer_acquisition for CAC,
+// total_spend for realized LTV). AOV already has its own dashboard KPI
+// (aovLast30d in dashboard-repository.ts), so it isn't duplicated here.
+export async function getMarketingMetrics(): Promise<MarketingMetrics> {
+  const supabase = await createClient();
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [{ count: totalCustomers }, { count: repeatCustomers }, { count: existingBeforeWindow }, { count: orderedInWindow }, { data: spendRows }, cacBySource] =
+    await Promise.all([
+      supabase.from("customers").select("id", { count: "exact", head: true }).is("deleted_at", null),
+      supabase.from("customers").select("id", { count: "exact", head: true }).is("deleted_at", null).gt("total_orders", 1),
+      supabase.from("customers").select("id", { count: "exact", head: true }).is("deleted_at", null).lt("customer_since", thirtyDaysAgo),
+      supabase
+        .from("customers")
+        .select("id", { count: "exact", head: true })
+        .is("deleted_at", null)
+        .lt("customer_since", thirtyDaysAgo)
+        .gte("last_order_at", thirtyDaysAgo),
+      supabase.from("customers").select("total_spend").is("deleted_at", null),
+      getCacBySource(),
+    ]);
+
+  const retentionRate30d = calculateRetentionRate({
+    customersExistingBeforeWindow: existingBeforeWindow ?? 0,
+    ofThoseWhoOrderedInWindow: orderedInWindow ?? 0,
+  });
+
+  const rows = spendRows ?? [];
+  const avgLtv = rows.length > 0 ? round2(rows.reduce((sum, c) => sum + c.total_spend, 0) / rows.length) : null;
+  const avgCac = calculateBlendedCac(cacBySource.map((s) => ({ averageCac: s.averageCac, customersWithKnownCost: s.customersWithKnownCost })));
+
+  return {
+    repeatPurchaseRate: calculateRepeatPurchaseRate({ totalCustomers: totalCustomers ?? 0, repeatCustomers: repeatCustomers ?? 0 }),
+    retentionRate30d,
+    churnRate30d: calculateChurnRate(retentionRate30d),
+    avgLtv,
+    avgCac,
+    ltvToCacRatio: calculateLtvToCacRatio(avgLtv, avgCac),
+  };
 }
 
 function round2(value: number): number {

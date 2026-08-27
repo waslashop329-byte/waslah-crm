@@ -130,6 +130,9 @@ export type SegmentCustomerViewRow = {
   delivery_risk_category: RiskLevel;
   return_risk_category: RiskLevel;
   overall_risk_category: RiskLevel;
+  governorates: string[];
+  purchased_categories: string[];
+  purchased_products: string[];
 };
 
 export type CustomerPhoneRow = {

@@ -58,7 +58,8 @@
       "customers": "العملاء",
       "confirmation": "التأكيد",
       "delivery": "التسليم",
-      "profit": "الأرباح"
+      "profit": "الأرباح",
+      "marketing": "التسويق"
     },
     "kpi": {
       "ordersLast30d": "الطلبات (30 يوم)",
@@ -90,6 +91,11 @@
       "shippingLast30d": "الشحن (30 يوم)",
       "cogsLast30d": "تكلفة البضاعة (30 يوم)",
       "netProfitLast30d": "صافي الربح (30 يوم)",
+      "repeatPurchaseRate": "معدل الشراء المتكرر",
+      "retentionRate": "معدل الاحتفاظ (30 يوم)",
+      "churnRate": "معدل التسرب (30 يوم)",
+      "avgLtv": "متوسط القيمة الدائمة",
+      "ltvToCacRatio": "نسبة القيمة الدائمة لتكلفة الاكتساب",
       "noData": "لا توجد بيانات"
     },
     "ordersExcludedNote": "تم استبعاد {count} طلب من هذا الرقم — بيانات التكلفة (إعلان/شحن/منتج) غير مكتملة.",
@@ -945,7 +951,10 @@
         "cancellation_risk_category": "خطر الإلغاء",
         "delivery_risk_category": "خطر التسليم",
         "return_risk_category": "خطر الإرجاع",
-        "overall_risk_category": "الخطر الإجمالي"
+        "overall_risk_category": "الخطر الإجمالي",
+        "location": "الموقع (المحافظة)",
+        "purchased_category": "تصنيف منتج مُشترى",
+        "purchased_product": "منتج مُشترى"
       }
     }
   },

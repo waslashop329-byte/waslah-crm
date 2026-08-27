@@ -23,6 +23,10 @@ import {
   Truck,
   RotateCcw,
   Coins,
+  Heart,
+  TrendingDown,
+  PiggyBank,
+  Scale,
 } from "lucide-react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
@@ -37,7 +41,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { getEventConfig } from "@/components/customers/profile/timeline-event-icon";
 import { getDashboardStats, getRecentActivity, getRevenueDeliveryStats } from "@/lib/repositories/dashboard-repository";
 import { getTeamConfirmationKpis } from "@/lib/repositories/confirmation-repository";
-import { getBusinessProfitSnapshot, getCacBySource } from "@/lib/repositories/profitability-repository";
+import { getBusinessProfitSnapshot, getCacBySource, getMarketingMetrics } from "@/lib/repositories/profitability-repository";
 import { getCurrentUser } from "@/lib/auth/session";
 import { listRecentInsights } from "@/lib/ai/services/business-insights-service";
 
@@ -56,7 +60,7 @@ export default async function DashboardPage() {
   const locale = (await getLocale()) as Locale;
   const dateLocale = getDateFnsLocale(locale);
 
-  const [stats, activity, insights, revenueDelivery, confirmationKpis, profitSnapshot, cacBySource] = await Promise.all([
+  const [stats, activity, insights, revenueDelivery, confirmationKpis, profitSnapshot, cacBySource, marketingMetrics] = await Promise.all([
     getDashboardStats(),
     getRecentActivity(),
     canViewInsights ? listRecentInsights(3) : Promise.resolve([]),
@@ -64,6 +68,7 @@ export default async function DashboardPage() {
     getTeamConfirmationKpis(),
     canViewProfit ? getBusinessProfitSnapshot() : Promise.resolve(null),
     canViewProfit ? getCacBySource() : Promise.resolve([]),
+    canViewProfit ? getMarketingMetrics() : Promise.resolve(null),
   ]);
 
   const noData = t("kpi.noData");
@@ -220,6 +225,48 @@ export default async function DashboardPage() {
               </CardContent>
             </Card>
           ) : null}
+        </div>
+      ) : null}
+
+      {canViewProfit && marketingMetrics ? (
+        <div>
+          <SectionLabel>{t("sections.marketing")}</SectionLabel>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+            <KpiCard
+              label={t("kpi.repeatPurchaseRate")}
+              value={marketingMetrics.repeatPurchaseRate ?? 0}
+              icon={Repeat}
+              suffix={marketingMetrics.repeatPurchaseRate !== null ? "%" : ` (${noData})`}
+              href={customersHref({ minOrders: "2" })}
+            />
+            <KpiCard
+              label={t("kpi.retentionRate")}
+              value={marketingMetrics.retentionRate30d ?? 0}
+              icon={Heart}
+              tone="success"
+              suffix={marketingMetrics.retentionRate30d !== null ? "%" : ` (${noData})`}
+            />
+            <KpiCard
+              label={t("kpi.churnRate")}
+              value={marketingMetrics.churnRate30d ?? 0}
+              icon={TrendingDown}
+              tone="warning"
+              suffix={marketingMetrics.churnRate30d !== null ? "%" : ` (${noData})`}
+            />
+            <KpiCard
+              label={t("kpi.avgLtv")}
+              value={marketingMetrics.avgLtv ?? 0}
+              icon={PiggyBank}
+              suffix={marketingMetrics.avgLtv !== null ? " EGP" : ` (${noData})`}
+            />
+            <KpiCard
+              label={t("kpi.ltvToCacRatio")}
+              value={marketingMetrics.ltvToCacRatio ?? 0}
+              icon={Scale}
+              tone={marketingMetrics.ltvToCacRatio !== null && marketingMetrics.ltvToCacRatio >= 3 ? "success" : "warning"}
+              suffix={marketingMetrics.ltvToCacRatio !== null ? "×" : ` (${noData})`}
+            />
+          </div>
         </div>
       ) : null}
 

@@ -58,7 +58,8 @@
       "customers": "Customers",
       "confirmation": "Confirmation",
       "delivery": "Delivery",
-      "profit": "Profit"
+      "profit": "Profit",
+      "marketing": "Marketing"
     },
     "kpi": {
       "ordersLast30d": "Orders (30d)",
@@ -90,6 +91,11 @@
       "shippingLast30d": "Shipping (30d)",
       "cogsLast30d": "COGS (30d)",
       "netProfitLast30d": "Net Profit (30d)",
+      "repeatPurchaseRate": "Repeat Purchase Rate",
+      "retentionRate": "Retention Rate (30d)",
+      "churnRate": "Churn Rate (30d)",
+      "avgLtv": "Avg. Lifetime Value",
+      "ltvToCacRatio": "LTV : CAC Ratio",
       "noData": "no data"
     },
     "ordersExcludedNote": "{count} orders excluded from this figure — missing ad/shipping/product cost data.",
@@ -945,7 +951,10 @@
         "cancellation_risk_category": "Cancellation Risk",
         "delivery_risk_category": "Delivery Risk",
         "return_risk_category": "Return Risk",
-        "overall_risk_category": "Overall Risk"
+        "overall_risk_category": "Overall Risk",
+        "location": "Location (Governorate)",
+        "purchased_category": "Purchased Category",
+        "purchased_product": "Purchased Product"
       }
     }
   },
