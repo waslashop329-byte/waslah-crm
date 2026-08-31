@@ -72,3 +72,19 @@ export function validateNormalizedOrder(input: unknown): ValidationResult<z.infe
   if (!parsed.success) return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
   return { success: true, data: parsed.data };
 }
+
+// Part 22 (Excel import) — products aren't part of the normalized customer/
+// order pipeline, but get the same server-side re-validation discipline.
+export const importedProductSchema = z.object({
+  name: z.string().trim().min(1, "Product name is required"),
+  sku: z.string().nullable(),
+  category: z.string().nullable(),
+  defaultPrice: z.number().min(0, "Price cannot be negative"),
+  costPrice: z.number().min(0, "Cost cannot be negative").nullable(),
+});
+
+export function validateImportedProduct(input: unknown): ValidationResult<z.infer<typeof importedProductSchema>> {
+  const parsed = importedProductSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
+  return { success: true, data: parsed.data };
+}

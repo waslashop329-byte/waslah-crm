@@ -19,6 +19,7 @@
     "aiAssistant": "AI Assistant",
     "aiUsage": "AI Usage",
     "integrations": "Integrations",
+    "dataImport": "Data Import",
     "automation": "Automation",
     "syncLogs": "Sync Logs",
     "settings": "Settings",
@@ -1194,6 +1195,34 @@
       "error": "Error",
       "notConfigured": "Not configured"
     }
+  },
+  "dataImport": {
+    "title": "Data Import",
+    "subtitle": "Bulk-upload customers, products, or orders from a spreadsheet — no external system connection needed. Each import shows up in Sync Logs with the same per-row detail as an API sync.",
+    "restricted": "Restricted",
+    "noPermission": "You don't have permission to import data.",
+    "entity": {
+      "customers": "Customers",
+      "products": "Products",
+      "orders": "Orders"
+    },
+    "downloadTemplate": "Download Template",
+    "expectedColumns": "Expected columns: {columns}",
+    "chooseFile": "Choose a file (.xlsx or .csv)…",
+    "parseError": "Couldn't read that file — make sure it's a valid .xlsx or .csv file.",
+    "validCount": "{count} ready to import",
+    "errorCount": "{count} rows with errors",
+    "row": "Row",
+    "status": "Status",
+    "details": "Details",
+    "valid": "Valid",
+    "invalid": "Invalid",
+    "importing": "Importing…",
+    "confirmImport": "Import {count} rows",
+    "resultSummary": "{success} imported successfully, {failed} failed.",
+    "viewDetails": "View details in Sync Logs",
+    "importDone": "Import complete",
+    "importFailed": "Import failed"
   },
   "syncLogsPage": {
     "title": "Sync Logs",

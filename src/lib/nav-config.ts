@@ -21,6 +21,7 @@ import {
   MessageCircleWarning,
   Megaphone,
   Gift,
+  FileSpreadsheet,
 } from "lucide-react";
 
 export interface NavItem {
@@ -55,6 +56,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "AI Assistant", key: "aiAssistant", href: "/ai-assistant", icon: Bot },
   { label: "AI Usage", key: "aiUsage", href: "/ai-usage", icon: Gauge },
   { label: "Integrations", key: "integrations", href: "/integrations", icon: Plug },
+  { label: "Data Import", key: "dataImport", href: "/data-import", icon: FileSpreadsheet },
   { label: "Automation", key: "automation", href: "/automations", icon: Workflow },
   { label: "Sync Logs", key: "syncLogs", href: "/sync-logs", icon: RefreshCw },
   { label: "Settings", key: "settings", href: "/settings", icon: Settings },

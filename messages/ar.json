@@ -19,6 +19,7 @@
     "aiAssistant": "المساعد الذكي",
     "aiUsage": "استخدام الذكاء الاصطناعي",
     "integrations": "التكاملات",
+    "dataImport": "استيراد بيانات",
     "automation": "الأتمتة",
     "syncLogs": "سجلات المزامنة",
     "settings": "الإعدادات",
@@ -1194,6 +1195,34 @@
       "error": "خطأ",
       "notConfigured": "غير مُعدّ"
     }
+  },
+  "dataImport": {
+    "title": "استيراد بيانات",
+    "subtitle": "ارفع العملاء أو المنتجات أو الطلبات دفعة واحدة من ملف إكسل — من غير ما تحتاج ربط مع نظام خارجي. كل عملية استيراد بتظهر في سجلات المزامنة بنفس تفاصيل كل صف زي أي مزامنة API.",
+    "restricted": "غير مصرّح",
+    "noPermission": "ليس لديك صلاحية لاستيراد البيانات.",
+    "entity": {
+      "customers": "العملاء",
+      "products": "المنتجات",
+      "orders": "الطلبات"
+    },
+    "downloadTemplate": "تحميل القالب",
+    "expectedColumns": "الأعمدة المتوقعة: {columns}",
+    "chooseFile": "اختر ملف (.xlsx أو .csv)…",
+    "parseError": "معرفتش أقرا الملف ده — تأكد إنه ملف .xlsx أو .csv صحيح.",
+    "validCount": "{count} جاهز للاستيراد",
+    "errorCount": "{count} صف فيه أخطاء",
+    "row": "الصف",
+    "status": "الحالة",
+    "details": "التفاصيل",
+    "valid": "صحيح",
+    "invalid": "غير صحيح",
+    "importing": "جارٍ الاستيراد…",
+    "confirmImport": "استيراد {count} صف",
+    "resultSummary": "تم استيراد {success} بنجاح، وفشل {failed}.",
+    "viewDetails": "عرض التفاصيل في سجلات المزامنة",
+    "importDone": "اكتمل الاستيراد",
+    "importFailed": "فشل الاستيراد"
   },
   "syncLogsPage": {
     "title": "سجلات المزامنة",

@@ -25,6 +25,7 @@ export async function syncCustomer(customer: NormalizedCustomer): Promise<Custom
   if (match.kind === "matched") {
     await recordExternalId(match.customerId, customer.source, customer.externalId);
     await syncCustomerPhones(match.customerId, customer);
+    await syncCustomerAddresses(match.customerId, customer);
     await dispatchEvent("customer.updated", { customerId: match.customerId });
     return { customerId: match.customerId, created: false, ambiguous: false };
   }
@@ -56,6 +57,7 @@ export async function syncCustomer(customer: NormalizedCustomer): Promise<Custom
 
   await recordExternalId(newCustomer.id, customer.source, customer.externalId);
   await syncCustomerPhones(newCustomer.id, customer);
+  await syncCustomerAddresses(newCustomer.id, customer);
 
   await recordCustomerEvent({
     customerId: newCustomer.id,
@@ -67,6 +69,38 @@ export async function syncCustomer(customer: NormalizedCustomer): Promise<Custom
   await dispatchEvent("customer.created", { customerId: newCustomer.id });
 
   return { customerId: newCustomer.id, created: true, ambiguous: false };
+}
+
+// customer.addresses was defined on NormalizedCustomer from the start but
+// never actually persisted anywhere — found while wiring up the Excel
+// importer (Part 22). Same dedupe-by-content approach as
+// syncCustomerPhones(): re-syncing the same source data twice never creates
+// duplicate rows.
+async function syncCustomerAddresses(customerId: string, customer: NormalizedCustomer): Promise<void> {
+  const supabase = createAdminClient();
+
+  for (const address of customer.addresses ?? []) {
+    const { data: existing } = await supabase
+      .from("customer_addresses")
+      .select("id")
+      .eq("customer_id", customerId)
+      .eq("address_line", address.addressLine)
+      .maybeSingle();
+
+    if (existing) continue;
+
+    await supabase.from("customer_addresses").insert({
+      customer_id: customerId,
+      label: null,
+      address_line: address.addressLine,
+      city: address.city ?? null,
+      governorate: address.governorate ?? null,
+      area: address.area ?? null,
+      details: address.details ?? null,
+      country: "EG",
+      is_primary: address.isPrimary ?? false,
+    });
+  }
 }
 
 async function syncCustomerPhones(customerId: string, customer: NormalizedCustomer): Promise<void> {
