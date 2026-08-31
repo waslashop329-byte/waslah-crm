@@ -32,6 +32,13 @@ export interface NormalizedCustomer {
   addresses?: NormalizedAddress[];
 }
 
+export interface NormalizedLineItem {
+  sku: string | null;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+}
+
 export interface NormalizedOrder {
   source: string;
   externalId: string;
@@ -41,6 +48,8 @@ export interface NormalizedOrder {
   status: NormalizedOrderStatus;
   totalAmount: number;
   productSummary?: string | null;
+  /** Real structured line items, when the source provides them — order-sync.ts persists these as multiple order_items rows instead of the single best-effort match productSummary alone gives. */
+  lineItems?: NormalizedLineItem[];
   orderedAt: string;
   confirmedAt?: string | null;
   shippedAt?: string | null;

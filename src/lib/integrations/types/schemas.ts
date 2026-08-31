@@ -36,6 +36,13 @@ export const normalizedCustomerSchema = z.object({
   addresses: z.array(normalizedAddressSchema).optional(),
 });
 
+export const normalizedLineItemSchema = z.object({
+  sku: z.string().nullable(),
+  name: z.string().trim().min(1),
+  quantity: z.number().int().min(1),
+  unitPrice: z.number().min(0),
+});
+
 export const normalizedOrderSchema = z.object({
   source: z.string().min(1),
   externalId: z.string().min(1),
@@ -44,6 +51,7 @@ export const normalizedOrderSchema = z.object({
   status: orderStatusEnum,
   totalAmount: z.number().min(0, "Order total cannot be negative"),
   productSummary: z.string().nullable().optional(),
+  lineItems: z.array(normalizedLineItemSchema).optional(),
   orderedAt: z.string().min(1, "orderedAt is required"),
   confirmedAt: z.string().nullable().optional(),
   shippedAt: z.string().nullable().optional(),

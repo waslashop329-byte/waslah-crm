@@ -87,10 +87,29 @@ export async function syncOrder(order: NormalizedOrder): Promise<OrderSyncResult
       relatedOrderId: orderId,
     });
 
-    // Best-effort only, and only on first insert — never on a later status
-    // update, so a manually-edited order_items breakdown is never clobbered
-    // by a replay of the same webhook/sync run.
-    if (order.productSummary) {
+    // Only on first insert — never on a later status update, so a manually-
+    // edited order_items breakdown is never clobbered by a replay of the
+    // same webhook/sync run.
+    if (order.lineItems && order.lineItems.length > 0) {
+      // Real structured items (main_system): create one order_items row per
+      // item, matching/creating the catalog product by SKU.
+      for (const item of order.lineItems) {
+        const productId = item.sku ? await findOrCreateProductBySku(item.sku, item.name, item.unitPrice) : null;
+        const costPrice = productId ? (await supabase.from("products").select("cost_price").eq("id", productId).maybeSingle()).data?.cost_price ?? null : null;
+
+        await supabase.from("order_items").insert({
+          order_id: orderId,
+          product_id: productId,
+          product_name_raw: item.name,
+          quantity: item.quantity,
+          unit_price: item.unitPrice,
+          unit_cost: costPrice,
+        });
+      }
+    } else if (order.productSummary) {
+      // Best-effort single item from a raw text summary (mock/excel_import):
+      // only ever matches an already-mapped product, never creates one —
+      // free text is too ambiguous a signal to auto-create a catalog entry from.
       const productId = await mapExternalProduct(order.source, order.productSummary);
       if (productId) {
         const { data: product } = await supabase.from("products").select("cost_price").eq("id", productId).maybeSingle();
@@ -141,4 +160,20 @@ export async function syncOrder(order: NormalizedOrder): Promise<OrderSyncResult
   }
 
   return { orderId, customerId, created, statusChanged };
+}
+
+// Deliberately conservative compared to product-import-service.ts's
+// upsertImportedProduct(): a real line item's price is a snapshot for
+// *this order*, not a catalog price update — an existing product matched
+// by SKU is only ever read here, never overwritten. Only creates a new
+// catalog entry when no SKU match exists.
+async function findOrCreateProductBySku(sku: string, name: string, unitPrice: number): Promise<string | null> {
+  const supabase = createAdminClient();
+
+  const { data: existing } = await supabase.from("products").select("id").eq("sku", sku).maybeSingle();
+  if (existing) return existing.id;
+
+  const { data: created, error } = await supabase.from("products").insert({ name, sku, category: null, default_price: unitPrice, cost_price: null }).select("id").single();
+  if (error || !created) return null;
+  return created.id;
 }
