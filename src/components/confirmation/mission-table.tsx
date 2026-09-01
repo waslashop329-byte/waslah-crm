@@ -86,7 +86,7 @@ function MissionRow({ order }: { order: MissionOrder }) {
     <TableRow>
       <TableCell className="font-mono text-xs">
         <div className="flex items-center gap-1.5">
-          {order.external_order_id ?? order.id.slice(0, 8)}
+          {order.external_order_code ?? order.external_order_id ?? order.id.slice(0, 8)}
           {alert === "escalate" ? <Badge variant="destructive">{t("alerts.escalate")}</Badge> : null}
           {alert === "overdue" ? (
             <Badge variant="outline" className="border-amber-500/40 text-amber-700 dark:text-amber-400">

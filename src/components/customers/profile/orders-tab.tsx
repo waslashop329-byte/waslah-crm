@@ -80,7 +80,7 @@ export function OrdersTab({ orders, canManageCosts, canAnalyzeCalls }: { orders:
                   <TableCell className="text-muted-foreground">
                     {isExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{order.external_order_id ?? order.id.slice(0, 8)}</TableCell>
+                  <TableCell className="font-mono text-xs">{order.external_order_code ?? order.external_order_id ?? order.id.slice(0, 8)}</TableCell>
                   <TableCell className="text-sm">{order.product_summary ?? "—"}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={`border-transparent ${STATUS_STYLES[order.status]}`}>

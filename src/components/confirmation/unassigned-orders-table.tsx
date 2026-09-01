@@ -89,7 +89,7 @@ function UnassignedRow({ order, employees, currentUserId }: { order: MissionOrde
 
   return (
     <TableRow>
-      <TableCell className="font-mono text-xs">{order.external_order_id ?? order.id.slice(0, 8)}</TableCell>
+      <TableCell className="font-mono text-xs">{order.external_order_code ?? order.external_order_id ?? order.id.slice(0, 8)}</TableCell>
       <TableCell className="text-sm">{order.customer_full_name}</TableCell>
       <TableCell className="text-right tabular-nums">{currency.format(order.total_amount)}</TableCell>
       <TableCell className="text-sm text-muted-foreground">{format(new Date(order.ordered_at), "MMM d, yyyy", { locale: dateLocale })}</TableCell>

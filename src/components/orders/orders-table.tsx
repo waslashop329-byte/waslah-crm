@@ -63,7 +63,7 @@ export async function OrdersTable({ orders }: { orders: OrderListRow[] }) {
         <TableBody>
           {orders.map((order) => (
             <TableRow key={order.id}>
-              <TableCell className="font-mono text-xs">{order.external_order_id ?? order.id.slice(0, 8)}</TableCell>
+              <TableCell className="font-mono text-xs">{order.external_order_code ?? order.external_order_id ?? order.id.slice(0, 8)}</TableCell>
               <TableCell className="text-sm">
                 <Link href={`/customers/${order.customer_id}`} className="hover:underline">
                   {order.customer_full_name}

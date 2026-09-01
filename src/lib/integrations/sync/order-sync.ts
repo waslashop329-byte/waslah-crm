@@ -57,6 +57,7 @@ export async function syncOrder(order: NormalizedOrder): Promise<OrderSyncResult
     customer_id: customerId,
     source: order.source,
     external_order_id: order.externalId,
+    external_order_code: order.displayCode ?? null,
     status: order.status,
     product_summary: order.productSummary ?? null,
     total_amount: order.totalAmount,

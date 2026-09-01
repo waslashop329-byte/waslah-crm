@@ -607,6 +607,7 @@ export type OrderRow = {
   customer_id: string;
   source: string;
   external_order_id: string | null;
+  external_order_code: string | null;
   status: OrderStatus;
   product_summary: string | null;
   total_amount: number;

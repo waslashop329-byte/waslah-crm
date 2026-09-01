@@ -46,7 +46,7 @@ export async function listOrders(params: OrderListParams): Promise<OrderListResu
     const term = params.search.trim();
     if (term) {
       const escaped = term.replace(/[%,]/g, "");
-      query = query.or(`external_order_id.ilike.%${escaped}%,product_summary.ilike.%${escaped}%`);
+      query = query.or(`external_order_id.ilike.%${escaped}%,external_order_code.ilike.%${escaped}%,product_summary.ilike.%${escaped}%`);
     }
   }
 

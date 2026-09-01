@@ -161,6 +161,11 @@ async function normalizeOrder(raw: RawOrder): Promise<NormalizedOrder> {
   return {
     source: MAIN_SYSTEM_SOURCE,
     externalId: raw.id,
+    // raw.id is an opaque internal id (e.g. "cmst3ag2m0089o701lf5ytdsl") —
+    // found live showing up as-is in the Confirmation queue and Orders list,
+    // meaningless to anyone on the merchant's own team. raw.code is the
+    // order number their staff actually recognize from their own dashboard.
+    displayCode: raw.code,
     customerExternalId: raw.customer.phone,
     externalStatus: raw.status.key,
     status,

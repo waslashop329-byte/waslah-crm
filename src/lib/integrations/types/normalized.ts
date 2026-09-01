@@ -44,6 +44,8 @@ export interface NormalizedLineItem {
 export interface NormalizedOrder {
   source: string;
   externalId: string;
+  /** Human-readable order number the source's own staff recognize (e.g. an order code shown in their ops dashboard) — distinct from externalId, which is often an opaque internal id not meant for display. Falls back to externalId in the UI when a source doesn't provide one. */
+  displayCode?: string | null;
   customerExternalId: string;
   /** Original status string exactly as the source sent it, before mapping. */
   externalStatus: string;
