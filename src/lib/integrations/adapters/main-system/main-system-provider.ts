@@ -133,6 +133,7 @@ function normalizeCustomer(raw: RawCustomer): NormalizedCustomer {
     fullName: raw.name,
     email: null,
     phones,
+    customerSince: raw.first_order_at,
   };
 
   if (raw.address?.line) {
@@ -145,7 +146,17 @@ function normalizeCustomer(raw: RawCustomer): NormalizedCustomer {
 }
 
 async function normalizeOrder(raw: RawOrder): Promise<NormalizedOrder> {
-  const status = await mapExternalStatus(MAIN_SYSTEM_SOURCE, raw.status.key);
+  const mappedStatus = await mapExternalStatus(MAIN_SYSTEM_SOURCE, raw.status.key);
+
+  // delivered_at is set independently of status.key on their side — an order
+  // can carry a real delivered_at while status.key still reads "confirmed"
+  // (confirmed live: 3 orders with delivered_at set, statuses confirmed/
+  // pending/cancelled, zero orders anywhere with status.key literally
+  // "delivered"). Treat delivered_at as the more concrete fact and let it
+  // win, except over an already-terminal negative outcome (cancelled/
+  // returned) — a stale delivered_at shouldn't relabel an order that was
+  // definitively cancelled or returned after the fact.
+  const status = raw.delivered_at && mappedStatus !== "cancelled" && mappedStatus !== "returned" ? "delivered" : mappedStatus;
 
   return {
     source: MAIN_SYSTEM_SOURCE,

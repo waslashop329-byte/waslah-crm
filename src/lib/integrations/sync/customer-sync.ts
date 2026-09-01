@@ -47,6 +47,10 @@ export async function syncCustomer(customer: NormalizedCustomer): Promise<Custom
       email: customer.email ?? null,
       status: "active",
       source: customer.source,
+      // Only set on insert (never touched on a later match/update) — real
+      // acquisition date when the source knows it, otherwise the column's
+      // own now() default keeps working exactly as before.
+      ...(customer.customerSince ? { customer_since: customer.customerSince } : {}),
     })
     .select("id")
     .single();

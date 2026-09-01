@@ -30,6 +30,8 @@ export interface NormalizedCustomer {
   email?: string | null;
   phones: NormalizedPhone[];
   addresses?: NormalizedAddress[];
+  /** When this customer actually became one (e.g. their real first-order date), if the source knows it. Only applied on first insert — never overwrites an existing customer_since on a later match. */
+  customerSince?: string | null;
 }
 
 export interface NormalizedLineItem {
