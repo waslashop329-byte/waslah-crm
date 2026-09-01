@@ -155,12 +155,31 @@ export async function runIntegrationSync(
     })
     .eq("id", runId);
 
+  // last_success_at is the cursor the *next* incremental sync starts from
+  // (fetchUpdatedOrders({ since: last_success_at })) — advancing it past a
+  // "partially_failed" run would permanently skip the records that failed:
+  // CustomerNotSyncedError is explicitly RetryableIntegrationError, meaning
+  // "the customer just hasn't synced yet, a later retry can succeed" (see
+  // its docstring in order-sync.ts) — but that retry only actually happens
+  // if this run's window is still covered by the *next* run. Found live:
+  // 9 of 1164 orders failed with CustomerNotSyncedError on the real
+  // main_system data (the source's own /customers list appears to lag
+  // /orders slightly for very recent phones), and the old code would have
+  // advanced last_success_at anyway, silently losing those 9 orders forever.
+  // Only a fully clean run advances the cursor; a partial failure still
+  // updates last_sync_at (so /sync-logs reflects the attempt) but leaves
+  // last_success_at where it was, so the next scheduled run's window still
+  // includes the records that failed and retries them for free — syncOrder/
+  // syncCustomer are idempotent, so re-processing the ones that already
+  // succeeded is harmless, just repeated work.
   await supabase
     .from("integrations")
     .update(
-      status !== "failed"
+      status === "completed"
         ? { last_sync_at: now, last_success_at: now, status: "connected" }
-        : { last_sync_at: now, last_failure_at: now, status: "error" },
+        : status === "partially_failed"
+          ? { last_sync_at: now, status: "connected" }
+          : { last_sync_at: now, last_failure_at: now, status: "error" },
     )
     .eq("id", integrationId);
 
