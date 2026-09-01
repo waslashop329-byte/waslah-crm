@@ -4,6 +4,7 @@ import { suggestUpsellProducts } from "@/lib/intelligence/sales/product-affinity
 import { calculateJourneyStages, type JourneyStage } from "@/lib/intelligence/sales/customer-journey";
 import { calculateCohortRetention, type CohortRow } from "@/lib/intelligence/sales/cohort-analysis";
 import { calculateReasonBreakdown, type CancellationReasonBreakdown } from "@/lib/intelligence/sales/voice-of-customer";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import type { ProductRow } from "@/lib/types/database";
 
 export interface UpsellSuggestion {
@@ -12,16 +13,18 @@ export interface UpsellSuggestion {
 }
 
 // All-customer purchase history, needed to compute affinity for any single
-// customer — small enough at this data volume to fetch in full rather than
-// building a materialized affinity table; revisit if the catalog/order
-// volume grows past what one query comfortably returns.
+// customer — fetched in full (paged past PostgREST's 1000-row cap) rather
+// than building a materialized affinity table; revisit with a real
+// affinity table if order volume grows enough that paging through all of
+// it becomes slow, not just past the cap.
 export async function getUpsellSuggestions(customerId: string, limit = 5): Promise<UpsellSuggestion[]> {
   const supabase = await createClient();
 
-  const { data: items, error } = await supabase.from("order_items").select("product_id, orders!inner(customer_id)").not("product_id", "is", null);
-  if (error) throw new Error(error.message);
+  const items = await fetchAllRows((from, to) =>
+    supabase.from("order_items").select("product_id, orders!inner(customer_id)").not("product_id", "is", null).range(from, to),
+  );
 
-  const purchases = (items ?? [])
+  const purchases = items
     .map((item) => ({
       customerId: (item.orders as unknown as { customer_id: string }).customer_id,
       productId: item.product_id as string,
@@ -74,11 +77,14 @@ export async function getCustomerJourney(customerId: string): Promise<JourneySta
 export async function getCohortRetention(): Promise<CohortRow[]> {
   const supabase = await createClient();
 
-  const { data: customers, error } = await supabase.from("customers").select("id, customer_since, orders(ordered_at)").is("deleted_at", null);
-  if (error) throw new Error(error.message);
+  // Paged past PostgREST's 1000-row cap — every customer needs to be in the
+  // cohort math, not just the first 1000.
+  const customers = await fetchAllRows((from, to) =>
+    supabase.from("customers").select("id, customer_since, orders(ordered_at)").is("deleted_at", null).range(from, to),
+  );
 
   return calculateCohortRetention(
-    (customers ?? []).map((c) => ({
+    customers.map((c) => ({
       customerSince: c.customer_since,
       orderDates: ((c.orders ?? []) as unknown as { ordered_at: string }[]).map((o) => o.ordered_at),
     })),
@@ -89,8 +95,11 @@ export async function getVoiceOfCustomer(days = 90): Promise<CancellationReasonB
   const supabase = await createClient();
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-  const { data, error } = await supabase.from("order_call_attempts").select("reason_category").eq("result", "cancelled").gte("attempted_at", since);
-  if (error) throw new Error(error.message);
+  // Paged past PostgREST's 1000-row cap — a real 90-day cancellation volume
+  // can exceed it.
+  const data = await fetchAllRows((from, to) =>
+    supabase.from("order_call_attempts").select("reason_category").eq("result", "cancelled").gte("attempted_at", since).range(from, to),
+  );
 
-  return calculateReasonBreakdown((data ?? []).map((row) => row.reason_category));
+  return calculateReasonBreakdown(data.map((row) => row.reason_category));
 }

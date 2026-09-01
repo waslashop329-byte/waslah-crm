@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 
 export interface DashboardStats {
   totalCustomers: number;
@@ -48,7 +49,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     pendingFollowUps,
     overdueFollowUps,
     duplicateCandidates,
-    automationExecutions,
   ] = await Promise.all([
     supabase.from("customers").select("id", { count: "exact", head: true }).is("deleted_at", null),
     supabase
@@ -101,14 +101,13 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     supabase.from("follow_ups").select("id", { count: "exact", head: true }).eq("status", "pending").gte("due_date", new Date().toISOString()),
     supabase.from("follow_ups").select("id", { count: "exact", head: true }).eq("status", "pending").lt("due_date", new Date().toISOString()),
     supabase.from("duplicate_candidates").select("id", { count: "exact", head: true }).eq("status", "pending"),
-    supabase
-      .from("automation_executions")
-      .select("status")
-      .gte("started_at", thirtyDaysAgoForAutomation)
-      .in("status", ["completed", "failed"]),
   ]);
 
-  const automationRuns = automationExecutions.data ?? [];
+  // Paged past PostgREST's 1000-row cap — real execution volume can exceed
+  // it, and this needs every row for an accurate success rate.
+  const automationRuns = await fetchAllRows<{ status: string }>((from, to) =>
+    supabase.from("automation_executions").select("status").gte("started_at", thirtyDaysAgoForAutomation).in("status", ["completed", "failed"]).range(from, to),
+  );
   const automationSuccessRate =
     automationRuns.length > 0 ? Math.round((automationRuns.filter((run) => run.status === "completed").length / automationRuns.length) * 100) : null;
 
@@ -147,14 +146,14 @@ export async function getRevenueDeliveryStats(days = 30): Promise<RevenueDeliver
   const supabase = await createClient();
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-  const [{ count: ordersLast30d }, { data: deliveredOrders }, { count: cancelledLast30d }, { count: returnedLast30d }] = await Promise.all([
+  const [{ count: ordersLast30d }, delivered, { count: cancelledLast30d }, { count: returnedLast30d }] = await Promise.all([
     supabase.from("orders").select("id", { count: "exact", head: true }).gte("ordered_at", since),
-    supabase.from("orders").select("total_amount, customers(total_orders)").eq("status", "delivered").gte("ordered_at", since),
+    // Paged past PostgREST's 1000-row cap — a real 30-day delivered-order
+    // volume can exceed it, and this needs every row to sum revenue correctly.
+    fetchAllRows((from, to) => supabase.from("orders").select("total_amount, customers(total_orders)").eq("status", "delivered").gte("ordered_at", since).range(from, to)),
     supabase.from("orders").select("id", { count: "exact", head: true }).eq("status", "cancelled").gte("ordered_at", since),
     supabase.from("orders").select("id", { count: "exact", head: true }).eq("status", "returned").gte("ordered_at", since),
   ]);
-
-  const delivered = deliveredOrders ?? [];
   const revenueLast30d = delivered.reduce((sum, o) => sum + o.total_amount, 0);
   const repeatRevenueLast30d = delivered
     .filter((o) => ((o.customers as unknown as { total_orders: number } | null)?.total_orders ?? 0) > 1)

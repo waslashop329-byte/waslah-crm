@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { recalculateCustomerScore } from "@/lib/intelligence/scoring/scoring-service";
 import { scanForDuplicateCandidates } from "@/lib/intelligence/duplicates/duplicate-detection-service";
 import { enrollEligibleInactiveCustomers, processDueCampaignSteps } from "@/lib/services/campaign-service";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 
 // Scheduled-maintenance entrypoint, same pattern as /api/sync (Part 10):
 // bearer-secret auth, no Supabase session, provider-independent — call it
@@ -48,17 +49,16 @@ async function runMaintenance(request: NextRequest) {
   }
 
   const supabase = createAdminClient();
-  const { data: customers, error } = await supabase.from("customers").select("id").is("deleted_at", null);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  // PostgREST caps any single row-returning request at 1000 — every active
+  // customer needs to be reachable here regardless of how large the real
+  // customer base grows, so this pages through instead of one bare select.
+  const customers = await fetchAllRows((from, to) => supabase.from("customers").select("id").is("deleted_at", null).range(from, to));
 
   let scoresRecalculated = 0;
   let scoresChanged = 0;
   let scoreErrors = 0;
 
-  for (const customer of customers ?? []) {
+  for (const customer of customers) {
     try {
       const result = await recalculateCustomerScore(customer.id, "scheduled.daily_maintenance");
       scoresRecalculated++;
@@ -96,7 +96,7 @@ async function runMaintenance(request: NextRequest) {
   }
 
   return NextResponse.json({
-    customersProcessed: customers?.length ?? 0,
+    customersProcessed: customers.length,
     scoresRecalculated,
     scoresChanged,
     scoreErrors,

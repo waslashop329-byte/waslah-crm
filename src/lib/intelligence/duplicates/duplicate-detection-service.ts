@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createNotification } from "@/lib/services/notification-service";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 
 // Transparent, explainable confidence — every point is traceable to a named
 // signal (Part 4 explicitly forbids an unexplained black-box score).
@@ -30,9 +31,11 @@ export interface DuplicateScanResult {
 export async function scanForDuplicateCandidates(): Promise<DuplicateScanResult> {
   const supabase = createAdminClient();
 
-  const [{ data: customers }, { data: phoneRows }, { data: nameMatches, error: nameError }] = await Promise.all([
-    supabase.from("customers").select("id, full_name, email").is("deleted_at", null),
-    supabase.from("customer_phones").select("customer_id, phone_normalized"),
+  // Both page past PostgREST's 1000-row cap — the whole active customer base
+  // has to be scanned for this to actually find every real duplicate.
+  const [customers, phoneRows, { data: nameMatches, error: nameError }] = await Promise.all([
+    fetchAllRows((from, to) => supabase.from("customers").select("id, full_name, email").is("deleted_at", null).range(from, to)),
+    fetchAllRows((from, to) => supabase.from("customer_phones").select("customer_id, phone_normalized").range(from, to)),
     supabase.rpc("find_similar_customer_names", { similarity_threshold: NAME_SIMILARITY_THRESHOLD }),
   ]);
 
@@ -40,10 +43,10 @@ export async function scanForDuplicateCandidates(): Promise<DuplicateScanResult>
     throw new Error(`Name similarity scan failed: ${nameError.message}`);
   }
 
-  const customerById = new Map((customers ?? []).map((c) => [c.id, c]));
+  const customerById = new Map(customers.map((c) => [c.id, c]));
 
   const phonesByCustomer = new Map<string, Set<string>>();
-  for (const row of phoneRows ?? []) {
+  for (const row of phoneRows) {
     if (!row.phone_normalized) continue;
     const set = phonesByCustomer.get(row.customer_id) ?? new Set<string>();
     set.add(row.phone_normalized);
@@ -60,7 +63,7 @@ export async function scanForDuplicateCandidates(): Promise<DuplicateScanResult>
   }
 
   const emailGroups = new Map<string, string[]>();
-  for (const customer of customers ?? []) {
+  for (const customer of customers) {
     if (!customer.email) continue;
     const key = customer.email.toLowerCase().trim();
     const list = emailGroups.get(key) ?? [];

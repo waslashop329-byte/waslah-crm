@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import type { ComplaintRow, ComplaintStatus } from "@/lib/types/database";
 
 export interface ComplaintWithCustomer extends ComplaintRow {
@@ -8,13 +9,17 @@ export interface ComplaintWithCustomer extends ComplaintRow {
 
 export async function listComplaints(status?: ComplaintStatus): Promise<ComplaintWithCustomer[]> {
   const supabase = await createClient();
-  let query = supabase.from("complaints").select("*, customers(full_name)").order("created_at", { ascending: false });
-  if (status) query = query.eq("status", status);
 
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
+  // Paged past PostgREST's 1000-row cap — the whole point of a "no
+  // pagination UI, show everything" list page is that it actually needs to
+  // show everything.
+  const data = await fetchAllRows((from, to) => {
+    let query = supabase.from("complaints").select("*, customers(full_name)").order("created_at", { ascending: false }).range(from, to);
+    if (status) query = query.eq("status", status);
+    return query;
+  });
 
-  return (data ?? []).map((row) => {
+  return data.map((row) => {
     const { customers, ...complaint } = row as ComplaintRow & { customers: { full_name: string } | null };
     return { ...complaint, customer_full_name: customers?.full_name ?? "Unknown customer" };
   });

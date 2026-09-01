@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 
 // Part 9: pre-aggregated metrics only — the AI never sees raw customer rows
 // here, just numbers already computed by SQL/services. This keeps the
@@ -38,7 +39,6 @@ export async function buildBusinessMetricsSnapshot(): Promise<BusinessMetricsSna
     followUpsCompleted30d,
     followUpsOverdue,
     followUpsTotal30d,
-    automationExecutions30d,
   ] = await Promise.all([
     supabase.from("customers").select("id", { count: "exact", head: true }).is("deleted_at", null),
     supabase.from("orders").select("id", { count: "exact", head: true }).gte("ordered_at", d(30)),
@@ -56,15 +56,18 @@ export async function buildBusinessMetricsSnapshot(): Promise<BusinessMetricsSna
     supabase.from("follow_ups").select("id", { count: "exact", head: true }).eq("status", "completed").gte("completed_at", d(30)),
     supabase.from("follow_ups").select("id", { count: "exact", head: true }).eq("status", "pending").lt("due_date", new Date().toISOString()),
     supabase.from("follow_ups").select("id", { count: "exact", head: true }).gte("created_at", d(30)),
-    supabase.from("automation_executions").select("status").gte("started_at", d(30)).in("status", ["completed", "failed"]),
   ]);
 
-  const { data: highValueCustomers } = await supabase.from("customers").select("total_spend").is("deleted_at", null).gt("total_spend", 0);
-  const averageSpend = highValueCustomers && highValueCustomers.length > 0
-    ? highValueCustomers.reduce((sum, c) => sum + c.total_spend, 0) / highValueCustomers.length
-    : 0;
+  // Both paged past PostgREST's 1000-row cap — real customer/execution
+  // volume can exceed it, and averaging/success-rate math needs every row.
+  const [highValueCustomers, automationRuns] = await Promise.all([
+    fetchAllRows<{ total_spend: number }>((from, to) => supabase.from("customers").select("total_spend").is("deleted_at", null).gt("total_spend", 0).range(from, to)),
+    fetchAllRows<{ status: string }>((from, to) =>
+      supabase.from("automation_executions").select("status").gte("started_at", d(30)).in("status", ["completed", "failed"]).range(from, to),
+    ),
+  ]);
+  const averageSpend = highValueCustomers.length > 0 ? highValueCustomers.reduce((sum, c) => sum + c.total_spend, 0) / highValueCustomers.length : 0;
 
-  const automationRuns = automationExecutions30d.data ?? [];
   const automationSuccessRate = automationRuns.length > 0 ? automationRuns.filter((r) => r.status === "completed").length / automationRuns.length : null;
 
   const ordersLast30dCount = ordersLast30d.count ?? 0;

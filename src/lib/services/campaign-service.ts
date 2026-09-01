@@ -4,6 +4,7 @@ import { sendCustomerMessage } from "@/lib/services/message-service";
 import { renderMessageTemplate } from "@/lib/messaging/template";
 import { computeNextSendAt, shouldExitEarly } from "@/lib/intelligence/campaigns/campaign-scheduler";
 import { calculateWinbackStage } from "@/lib/intelligence/loyalty/winback-stages";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import type { CampaignStepRow } from "@/lib/types/database";
 
 // Admin client throughout: enrollment is triggered from an event subscriber
@@ -64,11 +65,14 @@ export async function enrollEligibleInactiveCustomers(campaignId: string): Promi
   const supabase = createAdminClient();
   const now = new Date();
 
-  const { data: customers, error } = await supabase.from("customers").select("id, last_order_at").is("deleted_at", null).not("last_order_at", "is", null);
-  if (error) throw new Error(error.message);
+  // Pages past PostgREST's 1000-row cap — every customer with a last order
+  // needs to be scanned regardless of how large the real customer base grows.
+  const customers = await fetchAllRows((from, to) =>
+    supabase.from("customers").select("id, last_order_at").is("deleted_at", null).not("last_order_at", "is", null).range(from, to),
+  );
 
   let enrolled = 0;
-  for (const customer of customers ?? []) {
+  for (const customer of customers) {
     const daysSince = (now.getTime() - new Date(customer.last_order_at!).getTime()) / (1000 * 60 * 60 * 24);
     if (!calculateWinbackStage(daysSince)) continue;
 
