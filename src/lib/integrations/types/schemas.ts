@@ -46,6 +46,12 @@ export const normalizedLineItemSchema = z.object({
 export const normalizedOrderSchema = z.object({
   source: z.string().min(1),
   externalId: z.string().min(1),
+  // Zod strips any key not listed here during .parse() — found live: every
+  // synced order showed external_order_code as null despite the real API
+  // returning a code and main-system-provider correctly setting displayCode,
+  // because this schema had no entry for it and silently dropped the field
+  // before syncOrder() ever saw it.
+  displayCode: z.string().nullable().optional(),
   customerExternalId: z.string().min(1),
   externalStatus: z.string().min(1),
   status: orderStatusEnum,

@@ -19,6 +19,18 @@ export interface SyncRunSummary {
 const BATCH_SIZE = 50;
 const MAX_PAGES = 200; // hard stop so a misbehaving provider (nextCursor never null) can't loop forever
 
+// How far before last_success_at each incremental sync re-fetches, to give
+// CustomerNotSyncedError (main_system's own /customers list lagging /orders
+// for very recent phones — see order-sync.ts) a real chance to retry.
+// Learned live, the hard way: an earlier version of this file instead
+// withheld advancing last_success_at on any "partially_failed" run — safe in
+// theory, but this source has a *small, recurring* lag on nearly every run,
+// so the cursor never advanced at all and every "incremental" sync silently
+// became a full ~2000-order, ~50-minute re-fetch, every single hour,
+// piling up. A fixed lookback keeps the fetch window small and fast while
+// still covering the handful of records likely to have failed last time.
+const RETRY_LOOKBACK_MS = 30 * 60 * 1000;
+
 // Provider-independent entry point (Part 10): whatever eventually calls this
 // — a "Sync Now" button, a cron job, Trigger.dev — goes through the exact
 // same path, so scheduling is purely "who calls this function and when",
@@ -106,7 +118,8 @@ export async function runIntegrationSync(
     const fetchOrdersFn = useIncremental ? provider.fetchUpdatedOrders : provider.fetchOrders;
 
     if (fetchOrdersFn) {
-      const since = useIncremental ? await getLastSuccessfulSync(integrationId) : undefined;
+      const lastSuccessfulSync = useIncremental ? await getLastSuccessfulSync(integrationId) : null;
+      const since = lastSuccessfulSync ? new Date(new Date(lastSuccessfulSync).getTime() - RETRY_LOOKBACK_MS).toISOString() : undefined;
 
       await paginateAndProcess(fetchOrdersFn, { since: since ?? undefined }, async (raw) => {
         total++;
@@ -156,30 +169,21 @@ export async function runIntegrationSync(
     .eq("id", runId);
 
   // last_success_at is the cursor the *next* incremental sync starts from
-  // (fetchUpdatedOrders({ since: last_success_at })) — advancing it past a
-  // "partially_failed" run would permanently skip the records that failed:
-  // CustomerNotSyncedError is explicitly RetryableIntegrationError, meaning
-  // "the customer just hasn't synced yet, a later retry can succeed" (see
-  // its docstring in order-sync.ts) — but that retry only actually happens
-  // if this run's window is still covered by the *next* run. Found live:
-  // 9 of 1164 orders failed with CustomerNotSyncedError on the real
-  // main_system data (the source's own /customers list appears to lag
-  // /orders slightly for very recent phones), and the old code would have
-  // advanced last_success_at anyway, silently losing those 9 orders forever.
-  // Only a fully clean run advances the cursor; a partial failure still
-  // updates last_sync_at (so /sync-logs reflects the attempt) but leaves
-  // last_success_at where it was, so the next scheduled run's window still
-  // includes the records that failed and retries them for free — syncOrder/
-  // syncCustomer are idempotent, so re-processing the ones that already
-  // succeeded is harmless, just repeated work.
+  // (minus RETRY_LOOKBACK_MS, above) — a "partially_failed" run still
+  // advances it, same as "completed". CustomerNotSyncedError is retryable
+  // (order-sync.ts) precisely because the lookback buffer re-covers it next
+  // time, not because the cursor itself waits for a perfectly clean run —
+  // withholding advancement here was tried first and made every
+  // "incremental" sync balloon into a full historical re-fetch once this
+  // source's small recurring lag meant a fully-clean run almost never
+  // happened. Only a genuinely total failure (nothing synced at all) skips
+  // advancing it.
   await supabase
     .from("integrations")
     .update(
-      status === "completed"
+      status !== "failed"
         ? { last_sync_at: now, last_success_at: now, status: "connected" }
-        : status === "partially_failed"
-          ? { last_sync_at: now, status: "connected" }
-          : { last_sync_at: now, last_failure_at: now, status: "error" },
+        : { last_sync_at: now, last_failure_at: now, status: "error" },
     )
     .eq("id", integrationId);
 
