@@ -40,6 +40,8 @@ export default async function ConfirmationPage() {
         <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
       </div>
 
+      <div className="rounded-lg border border-e-4 border-e-primary bg-muted/40 px-4 py-3 text-sm text-muted-foreground">{t("syncedNote")}</div>
+
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard label={t("kpi.assigned")} value={kpis.assignedOrders} icon={Users} />
         <KpiCard label={t("kpi.confirmationRate")} value={kpis.confirmationRate ?? 0} icon={Target} suffix={kpis.confirmationRate !== null ? "%" : t("kpi.noData")} tone="success" />

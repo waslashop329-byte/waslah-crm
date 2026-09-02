@@ -518,6 +518,7 @@
   "confirmation": {
     "title": "Confirmation",
     "subtitle": "Today's mission and confirmation performance, last 30 days.",
+    "syncedNote": "Confirmation status for orders coming from the ops system (via Easy Confirm) updates here automatically with every sync — use this page only for orders that don't go through that integration.",
     "restricted": "Restricted",
     "noPermission": "You don't have permission to work confirmation orders.",
     "kpi": {
