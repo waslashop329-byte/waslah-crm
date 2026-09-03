@@ -30,6 +30,20 @@ function mapRow(type: ImportEntityType, row: ParsedRow): PreviewRow {
   return result.success ? { rawRow: row, ok: true, mapped: result.data } : { rawRow: row, ok: false, error: result.error };
 }
 
+// Next.js Server Actions cap the request body at 1MB by default — sending
+// an entire real file's worth of rows in one call hit that ceiling live
+// (a real order export easily serializes past 1MB). Chunking client-side
+// keeps every single request small regardless of how large the file gets,
+// rather than just raising the limit and hitting the same wall on a bigger
+// file later.
+const IMPORT_CHUNK_SIZE = 200;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
 function downloadTemplate(type: ImportEntityType) {
   const csv = generateTemplateCsv(type);
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -48,6 +62,7 @@ export function ImportWorkspace() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [result, setResult] = useState<ImportActionResult | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   function handleEntityTypeChange(next: string) {
     setEntityType(next as ImportEntityType);
@@ -77,22 +92,48 @@ export function ImportWorkspace() {
 
   function handleImport() {
     startTransition(async () => {
-      let res: ImportActionResult;
-      if (entityType === "customers") {
-        res = await commitCustomerImportAction(validRows.map((r) => r.mapped) as Parameters<typeof commitCustomerImportAction>[0]);
-      } else if (entityType === "products") {
-        res = await commitProductImportAction(validRows.map((r) => r.mapped) as Parameters<typeof commitProductImportAction>[0]);
-      } else {
-        res = await commitOrderImportAction(validRows.map((r) => r.mapped) as Parameters<typeof commitOrderImportAction>[0]);
+      const mapped = validRows.map((r) => r.mapped);
+      const chunks = chunk(mapped, IMPORT_CHUNK_SIZE);
+      setProgress({ done: 0, total: chunks.length });
+
+      const syncRunIds: string[] = [];
+      let totalRecords = 0;
+      let successfulRecords = 0;
+      let failedRecords = 0;
+      const errors: string[] = [];
+
+      for (const [index, batch] of chunks.entries()) {
+        let res: ImportActionResult;
+        if (entityType === "customers") {
+          res = await commitCustomerImportAction(batch as Parameters<typeof commitCustomerImportAction>[0]);
+        } else if (entityType === "products") {
+          res = await commitProductImportAction(batch as Parameters<typeof commitProductImportAction>[0]);
+        } else {
+          res = await commitOrderImportAction(batch as Parameters<typeof commitOrderImportAction>[0]);
+        }
+
+        if (!res.success) {
+          setProgress(null);
+          setResult(res);
+          toast.error(res.error ?? t("importFailed"));
+          return;
+        }
+
+        if (res.summary) {
+          syncRunIds.push(res.summary.syncRunId);
+          totalRecords += res.summary.totalRecords;
+          successfulRecords += res.summary.successfulRecords;
+          failedRecords += res.summary.failedRecords;
+          errors.push(...res.summary.errors);
+        }
+        setProgress({ done: index + 1, total: chunks.length });
       }
-      setResult(res);
-      if (res.success) {
-        toast.success(t("importDone"));
-        setRows([]);
-        setFileName(null);
-      } else {
-        toast.error(res.error ?? t("importFailed"));
-      }
+
+      setProgress(null);
+      setResult({ success: true, summary: { syncRunId: syncRunIds[syncRunIds.length - 1], totalRecords, successfulRecords, failedRecords, errors } });
+      toast.success(t("importDone"));
+      setRows([]);
+      setFileName(null);
     });
   }
 
@@ -173,7 +214,7 @@ export function ImportWorkspace() {
               </div>
 
               <Button type="button" onClick={handleImport} disabled={isPending || validRows.length === 0}>
-                {isPending ? t("importing") : t("confirmImport", { count: validRows.length })}
+                {isPending ? (progress && progress.total > 1 ? t("importingBatch", { done: progress.done, total: progress.total }) : t("importing")) : t("confirmImport", { count: validRows.length })}
               </Button>
             </>
           ) : null}
@@ -181,7 +222,10 @@ export function ImportWorkspace() {
           {result?.success && result.summary ? (
             <div className="rounded-lg border bg-muted/40 p-4 text-sm">
               <p>{t("resultSummary", { success: result.summary.successfulRecords, failed: result.summary.failedRecords })}</p>
-              <Link href={`/sync-logs/${result.summary.syncRunId}`} className="text-primary hover:underline">
+              {/* A large file imports as several batches (each its own sync_runs
+                  row) — link to the list rather than one batch's detail page,
+                  which would only ever show a fraction of the real result. */}
+              <Link href="/sync-logs" className="text-primary hover:underline">
                 {t("viewDetails")}
               </Link>
             </div>

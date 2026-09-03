@@ -1219,6 +1219,7 @@
     "valid": "صحيح",
     "invalid": "غير صحيح",
     "importing": "جارٍ الاستيراد…",
+    "importingBatch": "جارٍ الاستيراد… (الدفعة {done} من {total})",
     "confirmImport": "استيراد {count} صف",
     "resultSummary": "تم استيراد {success} بنجاح، وفشل {failed}.",
     "viewDetails": "عرض التفاصيل في سجلات المزامنة",

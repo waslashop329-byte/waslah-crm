@@ -1219,6 +1219,7 @@
     "valid": "Valid",
     "invalid": "Invalid",
     "importing": "Importing…",
+    "importingBatch": "Importing… (batch {done} of {total})",
     "confirmImport": "Import {count} rows",
     "resultSummary": "{success} imported successfully, {failed} failed.",
     "viewDetails": "View details in Sync Logs",
