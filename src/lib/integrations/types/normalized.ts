@@ -60,6 +60,10 @@ export interface NormalizedOrder {
   deliveredAt?: string | null;
   cancelledAt?: string | null;
   returnedAt?: string | null;
+  /** Only ever applied on first insert (order-sync.ts), same "insert-only" treatment as customerSince — a real cost figure from the source shouldn't silently overwrite one an admin later corrected by hand on the Orders tab. */
+  shippingCost?: number | null;
+  /** A free-text note attached to the order at import time (e.g. a delivery instruction) — order-sync.ts creates it as a real customer note rather than folding it into productSummary, so it shows up where notes are already surfaced instead of corrupting the product-name field. */
+  note?: string | null;
 }
 
 export interface NormalizedEmployee {

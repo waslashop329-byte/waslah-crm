@@ -10,8 +10,20 @@ export interface ParsedRow {
   [column: string]: string | number | boolean | null;
 }
 
-export function parseSpreadsheet(data: ArrayBuffer): ParsedRow[] {
-  const workbook = XLSX.read(data, { type: "array", cellDates: true });
+// CSV is plain text with no built-in encoding marker — feeding its raw
+// bytes to XLSX.read(..., { type: "array" }) makes it byte-sniff the
+// encoding, which mis-detects UTF-8 Arabic text as Latin-1 and corrupts
+// every non-ASCII name into mojibake (found live: "محمد سيد" came back as
+// "ÙØ­ÙØ¯ Ø³ÙØ¯" — silently, no error, just wrong data going into every
+// customer record). An .xlsx/.xls file has no such problem — it's a real
+// binary/zip container with Unicode handled internally — so only CSV needs
+// the explicit fix: decode its bytes as UTF-8 text ourselves first and feed
+// XLSX.read the resulting string instead of raw bytes.
+export function parseSpreadsheet(data: ArrayBuffer, fileName?: string): ParsedRow[] {
+  const isCsv = fileName?.toLowerCase().endsWith(".csv") ?? false;
+  const workbook = isCsv
+    ? XLSX.read(new TextDecoder("utf-8").decode(data), { type: "string", cellDates: true })
+    : XLSX.read(data, { type: "array", cellDates: true });
   const firstSheetName = workbook.SheetNames[0];
   if (!firstSheetName) return [];
 

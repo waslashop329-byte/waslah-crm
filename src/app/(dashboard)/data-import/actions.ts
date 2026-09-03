@@ -47,11 +47,11 @@ export async function commitProductImportAction(products: ImportedProduct[]): Pr
 }
 
 export async function commitOrderImportAction(rows: OrderImportRow[]): Promise<ImportActionResult> {
-  await requirePermission("integrations.manage");
+  const user = await requirePermission("integrations.manage");
   if (rows.length === 0) return { success: false, error: "No valid rows to import" };
 
   try {
-    const summary = await runOrderDataImport(rows);
+    const summary = await runOrderDataImport(rows, user.userId);
     revalidatePath("/customers");
     revalidatePath("/orders");
     revalidatePath("/sync-logs");

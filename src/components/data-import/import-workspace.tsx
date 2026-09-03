@@ -64,7 +64,7 @@ export function ImportWorkspace() {
 
     try {
       const buffer = await file.arrayBuffer();
-      const parsed = parseSpreadsheet(buffer);
+      const parsed = parseSpreadsheet(buffer, file.name);
       setRows(parsed.map((row) => mapRow(entityType, row)));
     } catch {
       toast.error(t("parseError"));

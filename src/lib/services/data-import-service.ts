@@ -135,7 +135,7 @@ export interface OrderImportRow {
   order: NormalizedOrder;
 }
 
-export async function runOrderDataImport(rows: OrderImportRow[]): Promise<DataImportSummary> {
+export async function runOrderDataImport(rows: OrderImportRow[], actorId: string): Promise<DataImportSummary> {
   const syncRunId = await startSyncRun();
   let success = 0;
   let failed = 0;
@@ -160,7 +160,7 @@ export async function runOrderDataImport(rows: OrderImportRow[]): Promise<DataIm
       // syncCustomer() is idempotent (matches by phone), so a phone number
       // repeated across many order rows just resolves to the same customer.
       const customerResult = await syncCustomer(customerValidated.data);
-      const orderResult = await syncOrder(orderValidated.data);
+      const orderResult = await syncOrder(orderValidated.data, actorId);
       success++;
       await recordItem(syncRunId, "order", orderValidated.data.externalId, "success", undefined, customerResult.customerId, orderResult.orderId);
     } catch (error) {

@@ -6,6 +6,7 @@ import { dispatchEvent } from "@/lib/events/dispatcher";
 import { ORDER_STATUS_EVENT } from "@/lib/events/event-types";
 import { RetryableIntegrationError } from "@/lib/integrations/core/errors";
 import { mapExternalProduct } from "@/lib/integrations/mappers/product-mapper";
+import { createNote } from "@/lib/services/note-service";
 import type { NormalizedOrder } from "@/lib/integrations/types/normalized";
 
 export interface OrderSyncResult {
@@ -30,7 +31,11 @@ export class CustomerNotSyncedError extends RetryableIntegrationError {
 // timeline events — the second run finds the existing order, sees the status
 // hasn't changed, and only recalculates stats (itself a pure function of the
 // orders table, so recomputing twice is a no-op).
-export async function syncOrder(order: NormalizedOrder): Promise<OrderSyncResult> {
+// actorId is only ever supplied by the Excel-import path (a real logged-in
+// user submitting the import) — sync-runner.ts's API-driven syncs have no
+// human actor and never pass one, which is fine because order.note is only
+// ever set by the import mapper too; the two only ever appear together.
+export async function syncOrder(order: NormalizedOrder, actorId?: string | null): Promise<OrderSyncResult> {
   const supabase = createAdminClient();
 
   const { data: externalMatch } = await supabase
@@ -74,7 +79,11 @@ export async function syncOrder(order: NormalizedOrder): Promise<OrderSyncResult
   let statusChanged = false;
 
   if (!existingOrder) {
-    const { data: inserted, error } = await supabase.from("orders").insert(orderFields).select("id").single();
+    // shipping_cost is insert-only, same reasoning as customerSince: a real
+    // figure from the source shouldn't silently overwrite one an admin
+    // already corrected by hand on the Orders tab during a later re-sync.
+    const insertOnlyFields = order.shippingCost !== undefined && order.shippingCost !== null ? { shipping_cost: order.shippingCost } : {};
+    const { data: inserted, error } = await supabase.from("orders").insert({ ...orderFields, ...insertOnlyFields }).select("id").single();
     if (error || !inserted) throw new Error(`Failed to create order: ${error?.message ?? "unknown error"}`);
 
     orderId = inserted.id;
@@ -123,6 +132,15 @@ export async function syncOrder(order: NormalizedOrder): Promise<OrderSyncResult
           unit_cost: product?.cost_price ?? null,
         });
       }
+    }
+
+    // Only on first insert, same as the line-items block above — a replay of
+    // the same import never creates a duplicate note. Requires a real actor
+    // (customer_notes.author_id is not-null); API-driven syncs never set
+    // order.note, so this only ever fires from the Excel-import path, which
+    // always has a logged-in user behind it.
+    if (order.note && actorId) {
+      await createNote({ customerId, authorId: actorId, content: order.note, relatedOrderId: orderId });
     }
   } else {
     orderId = existingOrder.id;

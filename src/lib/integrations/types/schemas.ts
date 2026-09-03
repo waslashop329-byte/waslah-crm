@@ -64,6 +64,8 @@ export const normalizedOrderSchema = z.object({
   deliveredAt: z.string().nullable().optional(),
   cancelledAt: z.string().nullable().optional(),
   returnedAt: z.string().nullable().optional(),
+  shippingCost: z.number().min(0).nullable().optional(),
+  note: z.string().nullable().optional(),
 });
 
 export const normalizedEmployeeSchema = z.object({
