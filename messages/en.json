@@ -1213,6 +1213,7 @@
     "parseError": "Couldn't read that file — make sure it's a valid .xlsx or .csv file.",
     "validCount": "{count} ready to import",
     "errorCount": "{count} rows with errors",
+    "previewTruncated": "Showing {shown} of {total} rows (errors first) — every row still gets imported, this preview is just capped so the page doesn't slow down.",
     "row": "Row",
     "status": "Status",
     "details": "Details",

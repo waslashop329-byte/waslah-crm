@@ -38,6 +38,15 @@ function mapRow(type: ImportEntityType, row: ParsedRow): PreviewRow {
 // file later.
 const IMPORT_CHUNK_SIZE = 200;
 
+// Rendering every parsed row into the DOM at once is fine for a small file
+// but freezes the tab on a large real one — found live: a real ~19,000-row
+// order file made the preview table try to mount 19,000 <TableRow>s. The
+// actual import isn't affected (it still processes every row in `rows`,
+// this only bounds what gets drawn on screen) — error rows are prioritized
+// into the visible slice since those are what someone actually needs to
+// see and fix, valid rows are just a sample proving the mapping worked.
+const PREVIEW_ROW_LIMIT = 200;
+
 function chunk<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
@@ -89,6 +98,15 @@ export function ImportWorkspace() {
 
   const validRows = rows.filter((r) => r.ok);
   const errorRows = rows.filter((r) => !r.ok);
+
+  // Original spreadsheet row number travels with each entry so the visible
+  // slice can drop entries (to stay small) without the "Row" column lying
+  // about which line in the source file it's showing.
+  const indexedRows = rows.map((row, index) => ({ row, sheetRow: index + 2 }));
+  const indexedErrors = indexedRows.filter((r) => !r.row.ok);
+  const indexedValid = indexedRows.filter((r) => r.row.ok);
+  const previewRows = [...indexedErrors, ...indexedValid].slice(0, PREVIEW_ROW_LIMIT);
+  const hiddenRowCount = Math.max(0, rows.length - previewRows.length);
 
   function handleImport() {
     startTransition(async () => {
@@ -180,6 +198,8 @@ export function ImportWorkspace() {
                 ) : null}
               </div>
 
+              {hiddenRowCount > 0 ? <p className="text-xs text-muted-foreground">{t("previewTruncated", { shown: previewRows.length, total: rows.length })}</p> : null}
+
               <div className="max-h-80 overflow-y-auto rounded-lg border">
                 <Table>
                   <TableHeader>
@@ -190,9 +210,9 @@ export function ImportWorkspace() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {rows.map((row, index) => (
-                      <TableRow key={index}>
-                        <TableCell className="font-mono text-xs text-muted-foreground">{index + 2}</TableCell>
+                    {previewRows.map(({ row, sheetRow }) => (
+                      <TableRow key={sheetRow}>
+                        <TableCell className="font-mono text-xs text-muted-foreground">{sheetRow}</TableCell>
                         <TableCell>
                           {row.ok ? (
                             <Badge variant="default" className="text-[10px]">

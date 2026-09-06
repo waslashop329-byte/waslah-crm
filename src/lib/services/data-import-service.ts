@@ -135,13 +135,25 @@ export interface OrderImportRow {
   order: NormalizedOrder;
 }
 
+// How many customers' orders get processed at once. Found live: each row
+// was taking ~5 seconds — not database load, but the network round-trip
+// latency of everything one order triggers (customer match, order write,
+// stats recalc, then order.created's event cascade: score recalculation,
+// risk recalculation, automation-rule checks, AI-staleness flagging) all
+// awaited one after another. At ~20-30 sequential round trips/row, a real
+// 19,000-row file projected to over a day. Running independent customers
+// concurrently overlaps that latency instead of paying it once per row —
+// this doesn't change what each row does, just how many rows are in
+// flight to Supabase at once.
+const CUSTOMER_CONCURRENCY = 15;
+
 export async function runOrderDataImport(rows: OrderImportRow[], actorId: string): Promise<DataImportSummary> {
   const syncRunId = await startSyncRun();
   let success = 0;
   let failed = 0;
   const errors: string[] = [];
 
-  for (const row of rows) {
+  async function processRow(row: OrderImportRow): Promise<void> {
     const customerValidated = validateNormalizedCustomer(row.customer);
     const orderValidated = validateNormalizedOrder(row.order);
 
@@ -150,7 +162,7 @@ export async function runOrderDataImport(rows: OrderImportRow[], actorId: string
       failed++;
       errors.push(message);
       await recordItem(syncRunId, "order", row.order.externalId, "failed", message);
-      continue;
+      return;
     }
 
     try {
@@ -170,6 +182,32 @@ export async function runOrderDataImport(rows: OrderImportRow[], actorId: string
       await recordItem(syncRunId, "order", row.order.externalId, "failed", message);
     }
   }
+
+  // Grouped by customer, not run row-by-row flat, so two orders for the
+  // same customer (a repeat buyer appearing twice in the same file) still
+  // process strictly one after the other — running them concurrently would
+  // race on that customer's own stats/score recalculation. Most rows are
+  // their own group of one (a new customer per order is the common case),
+  // so this still parallelizes almost the whole file in practice.
+  const groups = new Map<string, OrderImportRow[]>();
+  for (const row of rows) {
+    const key = row.order.customerExternalId;
+    const list = groups.get(key);
+    if (list) list.push(row);
+    else groups.set(key, [row]);
+  }
+  const groupList = Array.from(groups.values());
+
+  let nextGroupIndex = 0;
+  async function worker(): Promise<void> {
+    while (nextGroupIndex < groupList.length) {
+      const group = groupList[nextGroupIndex++];
+      for (const row of group) {
+        await processRow(row);
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CUSTOMER_CONCURRENCY, groupList.length) }, worker));
 
   await finishSyncRun(syncRunId, rows.length, success, failed, errors);
   return { syncRunId, totalRecords: rows.length, successfulRecords: success, failedRecords: failed, errors };
