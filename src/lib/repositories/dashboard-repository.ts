@@ -183,12 +183,28 @@ function round1(value: number): number {
 export async function getRecentActivity(limit = 8): Promise<RecentActivityItem[]> {
   const supabase = await createClient();
 
-  const { data } = await supabase
+  // Found live: this used to silently swallow errors (`if (!data) return []`
+  // with no error check) — once the table grew past ~9,400 rows, a missing
+  // index on created_at (fixed in migration 0067) made this specific query
+  // hit a genuine Postgres statement timeout under concurrent dashboard
+  // load, and the page just showed "No activity recorded yet" instead of a
+  // visible failure. The index made it faster but not immune — this query
+  // runs inside the dashboard's Promise.all alongside several other heavy
+  // aggregate queries, so it can still occasionally get starved under
+  // contention. Letting that throw would take down the *entire* dashboard
+  // over one non-critical activity feed — worse than the original bug — so
+  // this logs the failure (visible in server logs, unlike before) and
+  // degrades to an empty feed instead of crashing the page.
+  const { data, error } = await supabase
     .from("customer_events")
     .select("id, customer_id, event_type, description, created_at, customers(full_name)")
     .order("created_at", { ascending: false })
     .limit(limit);
 
+  if (error) {
+    console.error("getRecentActivity query failed:", error.message);
+    return [];
+  }
   if (!data) return [];
 
   return data.map((event) => ({

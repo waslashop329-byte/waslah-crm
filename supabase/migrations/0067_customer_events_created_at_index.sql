@@ -1,0 +1,12 @@
+-- Found live: getRecentActivity() (dashboard "Recent Customer Activity" card)
+-- orders customer_events by created_at DESC across the whole table (not
+-- scoped to one customer), but the only existing indexes are
+-- (customer_id, created_at desc) and (event_type) — neither helps a global
+-- ORDER BY created_at. With the table past ~9,400 rows and growing, and this
+-- query running concurrently with several other dashboard queries inside one
+-- Promise.all, it started hitting a genuine Postgres statement timeout —
+-- silently, since the calling code didn't check the query's error, so the
+-- dashboard just showed "No activity recorded yet" instead of a visible
+-- failure. This index lets the query use a fast index scan instead of
+-- sorting the whole table.
+create index idx_customer_events_created_at on public.customer_events(created_at desc);
