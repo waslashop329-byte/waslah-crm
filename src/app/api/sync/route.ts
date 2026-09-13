@@ -2,6 +2,19 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { runIntegrationSync } from "@/lib/integrations/sync/sync-runner";
 
+// Found live: a real sync run this route delegates to can easily take
+// several minutes (per-record network round trips add up — see
+// data-import-service.ts's CUSTOMER_CONCURRENCY comment for the same root
+// cause), but Vercel's default serverless function timeout is far shorter
+// (10s on Hobby) and kills the request outright (504
+// FUNCTION_INVOCATION_TIMEOUT) rather than letting it finish — confirmed
+// live via the GitHub Actions hourly caller. 60s is the maximum Hobby plan
+// allows; a routine hourly-window sync should normally fit well inside it
+// once the integration's cursor is caught up, but an unusually large
+// backlog (e.g. after this job has been broken for a while) can still
+// exceed it — that's a real ceiling of the current plan, not a bug here.
+export const maxDuration = 60;
+
 // Provider-independent scheduled-sync entrypoint (Part 10). Auth is a bearer
 // secret, not a Supabase session — this is meant to be called by a cron job,
 // Trigger.dev, or any other scheduler, none of which have a browser session.

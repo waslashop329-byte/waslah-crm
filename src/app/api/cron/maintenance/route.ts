@@ -5,6 +5,12 @@ import { scanForDuplicateCandidates } from "@/lib/intelligence/duplicates/duplic
 import { enrollEligibleInactiveCustomers, processDueCampaignSteps } from "@/lib/services/campaign-service";
 import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 
+// Same reasoning as /api/sync's maxDuration and data-import-service.ts's
+// CUSTOMER_CONCURRENCY: real per-customer work is network-round-trip-bound,
+// and this loop now runs ~3,000 customers — sequentially that's minutes,
+// Vercel's serverless limit is seconds. 60s is the Hobby-plan ceiling.
+export const maxDuration = 60;
+
 // Scheduled-maintenance entrypoint, same pattern as /api/sync (Part 10):
 // bearer-secret auth, no Supabase session, provider-independent — call it
 // from Vercel Cron, n8n, GitHub Actions, or a plain curl-based scheduler.
@@ -58,15 +64,25 @@ async function runMaintenance(request: NextRequest) {
   let scoresChanged = 0;
   let scoreErrors = 0;
 
-  for (const customer of customers) {
-    try {
-      const result = await recalculateCustomerScore(customer.id, "scheduled.daily_maintenance");
-      scoresRecalculated++;
-      if (result.changed) scoresChanged++;
-    } catch {
-      scoreErrors++;
+  // Each customer's score is independent of every other's, so — same
+  // pattern as data-import-service.ts's order import — this runs many at
+  // once instead of one at a time, turning "customers × round-trip latency"
+  // into roughly that divided by the concurrency level.
+  const SCORE_CONCURRENCY = 20;
+  let nextCustomerIndex = 0;
+  async function scoreWorker(): Promise<void> {
+    while (nextCustomerIndex < customers.length) {
+      const customer = customers[nextCustomerIndex++];
+      try {
+        const result = await recalculateCustomerScore(customer.id, "scheduled.daily_maintenance");
+        scoresRecalculated++;
+        if (result.changed) scoresChanged++;
+      } catch {
+        scoreErrors++;
+      }
     }
   }
+  await Promise.all(Array.from({ length: Math.min(SCORE_CONCURRENCY, customers.length) }, scoreWorker));
 
   let duplicateScan: { pairsEvaluated: number; candidatesRecorded: number } | { failed: string };
   try {
