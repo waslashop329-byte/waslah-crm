@@ -90,8 +90,21 @@ export async function runIntegrationSync(
   }
 
   try {
+    // Scheduled syncs use the same time-windowed "since" for customers as
+    // for orders — found live: with the real customer base past ~11,000,
+    // always re-fetching *every* customer on every hourly run (the original
+    // design, from when this ran against a few thousand at most) became the
+    // majority of each invocation's cost, and combined with Vercel's 60s
+    // function limit meant hourly runs never finished at all. A manual
+    // "Sync Now" still does the full re-fetch — that's its whole point, an
+    // exhaustive catch-all a person explicitly asked for, not a routine job
+    // fighting a serverless time limit.
+    const isScheduled = syncType === "scheduled";
+    const lastSuccessfulSync = isScheduled ? await getLastSuccessfulSync(integrationId) : null;
+    const since = lastSuccessfulSync ? new Date(new Date(lastSuccessfulSync).getTime() - RETRY_LOOKBACK_MS).toISOString() : undefined;
+
     if (providerSupports(provider, "fetchCustomers") && provider.fetchCustomers) {
-      await paginateAndProcess(provider.fetchCustomers, {}, async (raw) => {
+      await paginateAndProcess(provider.fetchCustomers, { since: isScheduled ? since : undefined }, async (raw) => {
         total++;
         const validated = validateNormalizedCustomer(raw);
         if (!validated.success) {
@@ -114,14 +127,11 @@ export async function runIntegrationSync(
       await reportProgress();
     }
 
-    const useIncremental = syncType === "scheduled" && providerSupports(provider, "fetchUpdatedOrders") && provider.fetchUpdatedOrders;
-    const fetchOrdersFn = useIncremental ? provider.fetchUpdatedOrders : provider.fetchOrders;
+    const useIncrementalOrders = isScheduled && providerSupports(provider, "fetchUpdatedOrders") && provider.fetchUpdatedOrders;
+    const fetchOrdersFn = useIncrementalOrders ? provider.fetchUpdatedOrders : provider.fetchOrders;
 
     if (fetchOrdersFn) {
-      const lastSuccessfulSync = useIncremental ? await getLastSuccessfulSync(integrationId) : null;
-      const since = lastSuccessfulSync ? new Date(new Date(lastSuccessfulSync).getTime() - RETRY_LOOKBACK_MS).toISOString() : undefined;
-
-      await paginateAndProcess(fetchOrdersFn, { since: since ?? undefined }, async (raw) => {
+      await paginateAndProcess(fetchOrdersFn, { since: useIncrementalOrders ? since : undefined }, async (raw) => {
         total++;
         const validated = validateNormalizedOrder(raw);
         if (!validated.success) {
