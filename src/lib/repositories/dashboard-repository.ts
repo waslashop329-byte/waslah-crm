@@ -1,6 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
+import { fetchAllRows, readCount } from "@/lib/supabase/fetch-all-rows";
 
 export interface DashboardStats {
   totalCustomers: number;
@@ -26,24 +26,6 @@ export interface RecentActivityItem {
   eventType: string;
   description: string | null;
   createdAt: string;
-}
-
-// A count query that silently returns 0 instead of the real number (from a
-// timeout, an RLS surprise, anything) is worse than one that's merely slow —
-// it looks like a valid answer. Every count in this file now goes through
-// this instead of a bare `.count ?? 0`: real errors get logged (visible in
-// server logs, unlike before) rather than disappearing into a misleading
-// zero. Found live: with the customer base past ~11,000, several of
-// getDashboardStats' then-13 concurrent count queries started intermittently
-// hitting statement timeouts under real contention — "Total Customers: 0"
-// on the dashboard while the CAC table on the very same page, from a
-// different query, correctly showed 11,698.
-function readCount(result: { count: number | null; error: { message: string } | null }, label: string): number {
-  if (result.error) {
-    console.error(`Dashboard count query failed (${label}):`, result.error.message);
-    return 0;
-  }
-  return result.count ?? 0;
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
@@ -118,37 +100,38 @@ export interface RevenueDeliveryStats {
 // Revenue/Delivery sections of the 5-level dashboard (Part 7's admin
 // dashboard breakdown). Revenue counts only delivered orders — an order that
 // later cancels was never real revenue, so counting it would overstate.
+//
+// Preparing for a real bulk import (~700 orders/day) — this used to page
+// through every delivered order in the window (fetchAllRows) just to sum
+// total_amount in JavaScript. Migration 0072 moved that sum (and every
+// other count here) into one Postgres aggregate query instead, so this
+// never pulls order rows to the client at all.
 export async function getRevenueDeliveryStats(days = 30): Promise<RevenueDeliveryStats> {
   const supabase = await createClient();
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-  const [ordersLast30dResult, delivered, cancelledLast30dResult, returnedLast30dResult] = await Promise.all([
-    supabase.from("orders").select("id", { count: "exact", head: true }).gte("ordered_at", since),
-    // Paged past PostgREST's 1000-row cap — a real 30-day delivered-order
-    // volume can exceed it, and this needs every row to sum revenue correctly.
-    fetchAllRows((from, to) => supabase.from("orders").select("total_amount, customers(total_orders)").eq("status", "delivered").gte("ordered_at", since).range(from, to)),
-    supabase.from("orders").select("id", { count: "exact", head: true }).eq("status", "cancelled").gte("ordered_at", since),
-    supabase.from("orders").select("id", { count: "exact", head: true }).eq("status", "returned").gte("ordered_at", since),
-  ]);
-  const ordersLast30d = readCount(ordersLast30dResult, "ordersLast30d");
-  const cancelledLast30d = readCount(cancelledLast30dResult, "cancelledLast30d");
-  const returnedLast30d = readCount(returnedLast30dResult, "returnedLast30d");
+  const { data, error } = await supabase.rpc("get_revenue_delivery_stats", { since }).single();
+  if (error) {
+    console.error("getRevenueDeliveryStats RPC failed:", error.message);
+  }
 
-  const revenueLast30d = delivered.reduce((sum, o) => sum + o.total_amount, 0);
-  const repeatRevenueLast30d = delivered
-    .filter((o) => ((o.customers as unknown as { total_orders: number } | null)?.total_orders ?? 0) > 1)
-    .reduce((sum, o) => sum + o.total_amount, 0);
+  const ordersLast30d = data?.orders_last_30d ?? 0;
+  const deliveredLast30d = data?.delivered_last_30d ?? 0;
+  const revenueLast30d = data?.revenue_last_30d ?? 0;
+  const repeatRevenueLast30d = data?.repeat_revenue_last_30d ?? 0;
+  const cancelledLast30d = data?.cancelled_last_30d ?? 0;
+  const returnedLast30d = data?.returned_last_30d ?? 0;
 
-  const resolvedOrders = delivered.length + cancelledLast30d + returnedLast30d;
+  const resolvedOrders = deliveredLast30d + cancelledLast30d + returnedLast30d;
 
   return {
     ordersLast30d,
-    deliveredLast30d: delivered.length,
+    deliveredLast30d,
     revenueLast30d: round2(revenueLast30d),
-    aovLast30d: delivered.length > 0 ? round2(revenueLast30d / delivered.length) : 0,
+    aovLast30d: deliveredLast30d > 0 ? round2(revenueLast30d / deliveredLast30d) : 0,
     repeatRevenueLast30d: round2(repeatRevenueLast30d),
-    deliveryRate: resolvedOrders > 0 ? round1((delivered.length / resolvedOrders) * 100) : null,
-    returnRate: delivered.length + returnedLast30d > 0 ? round1((returnedLast30d / (delivered.length + returnedLast30d)) * 100) : null,
+    deliveryRate: resolvedOrders > 0 ? round1((deliveredLast30d / resolvedOrders) * 100) : null,
+    returnRate: deliveredLast30d + returnedLast30d > 0 ? round1((returnedLast30d / (deliveredLast30d + returnedLast30d)) * 100) : null,
   };
 }
 

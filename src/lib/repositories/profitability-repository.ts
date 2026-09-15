@@ -9,7 +9,7 @@ import {
   calculateBlendedCac,
   calculateLtvToCacRatio,
 } from "@/lib/intelligence/economics/marketing-metrics";
-import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
+import { readCount } from "@/lib/supabase/fetch-all-rows";
 import type { OrderItemRow, OrderRow } from "@/lib/types/database";
 
 type OrderWithItems = Pick<OrderRow, "id" | "total_amount" | "ad_cost" | "shipping_cost"> & { order_items: OrderItemRow[] };
@@ -41,64 +41,27 @@ export interface BusinessProfitSnapshot {
 // Business-wide profit over a window — same "exclude, don't zero-fill,
 // report the gap" approach as calculateCustomerProfitability, aggregated
 // instead of per-customer.
+//
+// Preparing for real bulk-import volume (~700 orders/day): this used to
+// page through every order in the window plus every one of their
+// order_items (chunked by 200 order ids, after an earlier fix for a
+// statement timeout doing it as one big join) just to sum revenue/costs in
+// JavaScript. Migration 0073 moved the whole computation into one Postgres
+// aggregate query — same exclusion rule (an order only counts if ad_cost,
+// shipping_cost, and every line item's unit_cost are known).
 export async function getBusinessProfitSnapshot(days = 30): Promise<BusinessProfitSnapshot> {
   const supabase = await createClient();
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-  // Pages past PostgREST's 1000-row cap — a real 30-day order volume can
-  // exceed it.
-  const orders = await fetchAllRows((from, to) =>
-    supabase.from("orders").select("id, total_amount, ad_cost, shipping_cost").gte("ordered_at", since).range(from, to),
-  );
-
-  // The nested `order_items(quantity, unit_cost)` join used to be fetched
-  // in the same query as `orders`, paginated together — that intermittently
-  // hit a genuine Postgres statement timeout live (same root cause as
-  // getCacBySource: a big join done as one query). Fetching order_items
-  // separately, chunked by order id, keeps every query small like the
-  // getCacBySource fix does.
-  const CHUNK_SIZE = 200;
-  const orderIds = orders.map((o) => o.id);
-  const idChunks: string[][] = [];
-  for (let i = 0; i < orderIds.length; i += CHUNK_SIZE) idChunks.push(orderIds.slice(i, i + CHUNK_SIZE));
-
-  const itemsByChunk =
-    idChunks.length === 0
-      ? []
-      : await Promise.all(
-          idChunks.map((chunk) =>
-            fetchAllRows((from, to) => supabase.from("order_items").select("order_id, quantity, unit_cost").in("order_id", chunk).range(from, to)),
-          ),
-        );
-  const items = itemsByChunk.flat() as unknown as Pick<OrderItemRow, "order_id" | "quantity" | "unit_cost">[];
-
-  const itemsByOrderId = new Map<string, Pick<OrderItemRow, "quantity" | "unit_cost">[]>();
-  for (const item of items) {
-    const arr = itemsByOrderId.get(item.order_id) ?? [];
-    arr.push({ quantity: item.quantity, unit_cost: item.unit_cost });
-    itemsByOrderId.set(item.order_id, arr);
+  const { data, error } = await supabase.rpc("get_business_profit_snapshot", { since }).single();
+  if (error) {
+    console.error("getBusinessProfitSnapshot RPC failed:", error.message);
   }
 
-  let revenue = 0;
-  let adCost = 0;
-  let shippingCost = 0;
-  let cogs = 0;
-  let ordersMissingCostData = 0;
-
-  for (const order of orders) {
-    const orderItems = itemsByOrderId.get(order.id) ?? [];
-    const missingCogs = orderItems.some((item) => item.unit_cost === null);
-
-    if (order.ad_cost === null || order.shipping_cost === null || missingCogs) {
-      ordersMissingCostData += 1;
-      continue;
-    }
-
-    revenue += order.total_amount;
-    adCost += order.ad_cost;
-    shippingCost += order.shipping_cost;
-    cogs += orderItems.reduce((sum, item) => sum + item.quantity * (item.unit_cost ?? 0), 0);
-  }
+  const revenue = data?.revenue ?? 0;
+  const adCost = data?.ad_cost ?? 0;
+  const shippingCost = data?.shipping_cost ?? 0;
+  const cogs = data?.cogs ?? 0;
 
   return {
     revenue: round2(revenue),
@@ -106,55 +69,34 @@ export async function getBusinessProfitSnapshot(days = 30): Promise<BusinessProf
     shippingCost: round2(shippingCost),
     cogs: round2(cogs),
     netProfit: round2(revenue - adCost - shippingCost - cogs),
-    ordersConsidered: orders.length - ordersMissingCostData,
-    ordersMissingCostData,
+    ordersConsidered: data?.orders_considered ?? 0,
+    ordersMissingCostData: data?.orders_missing_cost_data ?? 0,
   };
 }
 
+// Preparing for real bulk-import volume (~700 orders/day): this used to
+// fetch every customer in the window, then chunk their ids into batches of
+// 200 to find each one's first order (a fix for an earlier live statement
+// timeout from one huge `.in()` list), then group by source in JS.
+// Migration 0074 does the "first order per customer" lookup as one
+// DISTINCT ON pass over orders in Postgres — calculateCacBySource() still
+// does the final per-source grouping/averaging unchanged, since that part
+// (already just one row per customer, in memory) was never the bottleneck.
 export async function getCacBySource(days = 90): Promise<CacBySource[]> {
   const supabase = await createClient();
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-  // Pages past PostgREST's 1000-row cap — a real 90-day acquisition window
-  // can exceed it.
-  const rows = await fetchAllRows((from, to) =>
-    supabase.from("customers").select("id, customer_since, customer_acquisition(source)").is("deleted_at", null).gte("customer_since", since).range(from, to),
-  );
-  if (rows.length === 0) return [];
-
-  // A single .in() with a huge id list is what actually broke this live —
-  // ~1800 real customer UUIDs in one WHERE IN produced a genuine Postgres
-  // "statement timeout" (confirmed against the real synced data, not
-  // theoretical). Chunking the id list keeps every individual query small
-  // and fast regardless of how large the cohort gets; fetchAllRows still
-  // handles the per-chunk 1000-row cap on top of that.
-  const CHUNK_SIZE = 200;
-  const customerIds = rows.map((c) => c.id);
-  const idChunks: string[][] = [];
-  for (let i = 0; i < customerIds.length; i += CHUNK_SIZE) idChunks.push(customerIds.slice(i, i + CHUNK_SIZE));
-
-  const firstOrdersByChunk = await Promise.all(
-    idChunks.map((chunk) =>
-      fetchAllRows((from, to) =>
-        supabase.from("orders").select("customer_id, ad_cost, ordered_at").in("customer_id", chunk).order("ordered_at", { ascending: true }).range(from, to),
-      ),
-    ),
-  );
-  const firstOrders = firstOrdersByChunk.flat();
-
-  const firstAdCostByCustomer = new Map<string, number | null>();
-  for (const order of firstOrders) {
-    if (!firstAdCostByCustomer.has(order.customer_id)) {
-      firstAdCostByCustomer.set(order.customer_id, order.ad_cost);
-    }
+  const { data, error } = await supabase.rpc("get_customer_acquisition_first_order_cost", { since });
+  if (error) {
+    console.error("getCacBySource RPC failed:", error.message);
+    return [];
   }
+  if (!data || data.length === 0) return [];
 
-  return calculateCacBySource(
-    rows.map((c) => ({
-      source: (c.customer_acquisition as unknown as { source: string | null } | null)?.source ?? null,
-      firstOrderAdCost: firstAdCostByCustomer.get(c.id) ?? null,
-    })),
-  );
+  // The RPC already coalesces a missing acquisition source to "untagged" —
+  // the same string calculateCacBySource's own null-coalescing would
+  // produce, so passing it straight through groups identically.
+  return calculateCacBySource(data.map((row) => ({ source: row.source, firstOrderAdCost: row.first_order_ad_cost })));
 }
 
 export interface MarketingMetrics {
@@ -170,38 +112,49 @@ export interface MarketingMetrics {
 // that already exists from earlier phases (customer_acquisition for CAC,
 // total_spend for realized LTV). AOV already has its own dashboard KPI
 // (aovLast30d in dashboard-repository.ts), so it isn't duplicated here.
+// Preparing for real bulk-import volume (~700 orders/day): avgLtv used to
+// page through every non-deleted customer's total_spend (fetchAllRows) just
+// to average it in JS — migration 0075 does that AVG() in Postgres instead.
+// The four counts below now go through readCount() so a real query error
+// (a statement timeout under load, same failure mode already found twice
+// this session) logs visibly instead of silently reading as 0.
 export async function getMarketingMetrics(): Promise<MarketingMetrics> {
   const supabase = await createClient();
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [{ count: totalCustomers }, { count: repeatCustomers }, { count: existingBeforeWindow }, { count: orderedInWindow }, spendRows, cacBySource] =
-    await Promise.all([
-      supabase.from("customers").select("id", { count: "exact", head: true }).is("deleted_at", null),
-      supabase.from("customers").select("id", { count: "exact", head: true }).is("deleted_at", null).gt("total_orders", 1),
-      supabase.from("customers").select("id", { count: "exact", head: true }).is("deleted_at", null).lt("customer_since", thirtyDaysAgo),
-      supabase
-        .from("customers")
-        .select("id", { count: "exact", head: true })
-        .is("deleted_at", null)
-        .lt("customer_since", thirtyDaysAgo)
-        .gte("last_order_at", thirtyDaysAgo),
-      // Paged past PostgREST's 1000-row cap — averaging total_spend across
-      // only the first 1000 of a much larger real customer base silently
-      // understated avg. LTV (found live, first real sync: 1817 customers).
-      fetchAllRows<{ total_spend: number }>((from, to) => supabase.from("customers").select("total_spend").is("deleted_at", null).range(from, to)),
-      getCacBySource(),
-    ]);
+  const [totalCustomersResult, repeatCustomersResult, existingBeforeWindowResult, orderedInWindowResult, avgLtvResult, cacBySource] = await Promise.all([
+    supabase.from("customers").select("id", { count: "exact", head: true }).is("deleted_at", null),
+    supabase.from("customers").select("id", { count: "exact", head: true }).is("deleted_at", null).gt("total_orders", 1),
+    supabase.from("customers").select("id", { count: "exact", head: true }).is("deleted_at", null).lt("customer_since", thirtyDaysAgo),
+    supabase
+      .from("customers")
+      .select("id", { count: "exact", head: true })
+      .is("deleted_at", null)
+      .lt("customer_since", thirtyDaysAgo)
+      .gte("last_order_at", thirtyDaysAgo),
+    supabase.rpc("get_average_customer_ltv"),
+    getCacBySource(),
+  ]);
+
+  const totalCustomers = readCount(totalCustomersResult, "totalCustomers");
+  const repeatCustomers = readCount(repeatCustomersResult, "repeatCustomers");
+  const existingBeforeWindow = readCount(existingBeforeWindowResult, "existingBeforeWindow");
+  const orderedInWindow = readCount(orderedInWindowResult, "orderedInWindow");
+
+  if (avgLtvResult.error) {
+    console.error("getMarketingMetrics avgLtv RPC failed:", avgLtvResult.error.message);
+  }
 
   const retentionRate30d = calculateRetentionRate({
-    customersExistingBeforeWindow: existingBeforeWindow ?? 0,
-    ofThoseWhoOrderedInWindow: orderedInWindow ?? 0,
+    customersExistingBeforeWindow: existingBeforeWindow,
+    ofThoseWhoOrderedInWindow: orderedInWindow,
   });
 
-  const avgLtv = spendRows.length > 0 ? round2(spendRows.reduce((sum, c) => sum + c.total_spend, 0) / spendRows.length) : null;
+  const avgLtv = avgLtvResult.data !== null && avgLtvResult.data !== undefined ? round2(avgLtvResult.data) : null;
   const avgCac = calculateBlendedCac(cacBySource.map((s) => ({ averageCac: s.averageCac, customersWithKnownCost: s.customersWithKnownCost })));
 
   return {
-    repeatPurchaseRate: calculateRepeatPurchaseRate({ totalCustomers: totalCustomers ?? 0, repeatCustomers: repeatCustomers ?? 0 }),
+    repeatPurchaseRate: calculateRepeatPurchaseRate({ totalCustomers, repeatCustomers }),
     retentionRate30d,
     churnRate30d: calculateChurnRate(retentionRate30d),
     avgLtv,

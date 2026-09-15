@@ -30,3 +30,19 @@ export async function fetchAllRows<T>(
 
   return results;
 }
+
+// A `{ count: "exact", head: true }` query that errors (e.g. a statement
+// timeout under real concurrent load — found live on the dashboard at
+// ~11,000 customers) reads as `count: null` from a bare `.count ?? 0`, with
+// zero visibility that anything went wrong: a real failure looks exactly
+// like a legitimate zero. Every count query across the dashboard/reporting
+// repositories should go through this instead, so a real error gets logged
+// (visible in server logs) rather than silently disappearing into a
+// misleading 0.
+export function readCount(result: { count: number | null; error: { message: string } | null }, label: string): number {
+  if (result.error) {
+    console.error(`Count query failed (${label}):`, result.error.message);
+    return 0;
+  }
+  return result.count ?? 0;
+}

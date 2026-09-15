@@ -1224,6 +1224,36 @@ export type Database = {
           inactive_customers: number;
         }[];
       };
+      get_revenue_delivery_stats: {
+        Args: { since: string };
+        Returns: {
+          orders_last_30d: number;
+          delivered_last_30d: number;
+          revenue_last_30d: number;
+          repeat_revenue_last_30d: number;
+          cancelled_last_30d: number;
+          returned_last_30d: number;
+        }[];
+      };
+      get_business_profit_snapshot: {
+        Args: { since: string };
+        Returns: {
+          revenue: number;
+          ad_cost: number;
+          shipping_cost: number;
+          cogs: number;
+          orders_considered: number;
+          orders_missing_cost_data: number;
+        }[];
+      };
+      get_customer_acquisition_first_order_cost: {
+        Args: { since: string };
+        Returns: { source: string; first_order_ad_cost: number | null }[];
+      };
+      get_average_customer_ltv: {
+        Args: Record<PropertyKey, never>;
+        Returns: number | null;
+      };
     };
   };
 };
