@@ -5,18 +5,39 @@ import type { NormalizedCustomer, NormalizedOrder, NormalizedOrderStatus } from 
 // Accepts the CRM's own internal status keys (case-insensitive) or the
 // Arabic labels already shown throughout the UI, so a user copying statuses
 // out of the CRM itself doesn't have to translate them back to English.
+//
+// Also accepts EasyOrders' own status vocabulary directly (confirmed
+// against their real API docs and a real order export) — their statuses
+// are far more granular than ours, so several map into the same internal
+// bucket. Best-effort, same as main_system's original mapping: an
+// unrecognized status would reject the whole row rather than default to
+// something wrong, so every value from their docs is listed even where the
+// mapping is a judgment call:
+//   pending_payment -> pending (still unprocessed, awaiting payment)
+//   paid -> confirmed (payment received, ready to move forward)
+//   paid_failed -> pending (failed attempt, not necessarily a lost order —
+//     needs a human to follow up, not an automatic cancellation)
+//   waiting_for_pickup -> processing (being prepared, not shipped yet)
+//   in_delivery -> shipped
+//   returning_from_delivery / request_refund / refund_in_progress -> returned
+//     (no distinct in-progress-refund concept exists internally yet)
 const STATUS_ALIASES: Record<string, NormalizedOrderStatus> = {
   new: "new",
   "جديد": "new",
   pending: "pending",
   "معلق": "pending",
   "معلّق": "pending",
+  pending_payment: "pending",
+  paid_failed: "pending",
   confirmed: "confirmed",
   "مؤكد": "confirmed",
+  paid: "confirmed",
   processing: "processing",
   "قيد التجهيز": "processing",
+  waiting_for_pickup: "processing",
   shipped: "shipped",
   "تم الشحن": "shipped",
+  in_delivery: "shipped",
   delivered: "delivered",
   "تم التسليم": "delivered",
   cancelled: "cancelled",
@@ -25,6 +46,10 @@ const STATUS_ALIASES: Record<string, NormalizedOrderStatus> = {
   "ملغي": "cancelled",
   returned: "returned",
   "مرتجع": "returned",
+  returning_from_delivery: "returned",
+  request_refund: "returned",
+  refund_in_progress: "returned",
+  refunded: "returned",
   failed_delivery: "failed_delivery",
   "failed delivery": "failed_delivery",
   "فشل التسليم": "failed_delivery",
@@ -32,6 +57,19 @@ const STATUS_ALIASES: Record<string, NormalizedOrderStatus> = {
 
 function mapStatus(raw: string): NormalizedOrderStatus | null {
   return STATUS_ALIASES[raw.trim().toLowerCase()] ?? null;
+}
+
+// EasyOrders' export packs a multi-product order into ONE row: Product Name,
+// Quantity, SKU, and Item Price all become newline-joined lists (one segment
+// per product) instead of separate rows. Found live: 3 of 738 real rows had
+// e.g. Quantity "1\n1" and Item Price "699\n349" for a 2-product order,
+// which the single-line-item assumption below used to reject outright as an
+// "Invalid quantity" error. A single-product row never contains "\n", so
+// splitting always returns a 1-element array there and behaves exactly as
+// before.
+function splitMultiValue(raw: string | null): string[] {
+  if (raw === null) return [];
+  return raw.split("\n").map((v) => v.trim());
 }
 
 export interface OrderRowResult {
@@ -103,15 +141,31 @@ export function mapOrderRow(row: ParsedRow): RowMapResult<OrderRowResult> {
   // user to invent order numbers for historical data that never had one.
   const externalId = reference ?? `${customerResult.data.externalId}-${orderedAt.toISOString().slice(0, 10)}-${totalAmount}`;
 
-  const productSummary = productName ? (variant ? `${productName} (${variant})` : productName) : null;
+  const productNames = splitMultiValue(productName).filter((name) => name !== "");
+  const quantityValues = splitMultiValue(quantityRaw);
+  const skuValues = splitMultiValue(sku);
+  const itemPriceValues = splitMultiValue(itemPriceRaw);
+
+  const productSummary = productNames.length > 0 ? (variant ? `${productNames.join(" + ")} (${variant})` : productNames.join(" + ")) : null;
 
   let lineItems: NormalizedOrder["lineItems"];
-  if (productName) {
-    const quantity = quantityRaw ? Number(quantityRaw) : 1;
-    if (!Number.isFinite(quantity) || quantity <= 0) return { success: false, error: `Invalid quantity "${quantityRaw}"` };
-    const unitPrice = itemPriceRaw ? Number(itemPriceRaw) : totalAmount;
-    if (!Number.isFinite(unitPrice) || unitPrice < 0) return { success: false, error: `Invalid item price "${itemPriceRaw}"` };
-    lineItems = [{ sku: sku || null, name: productSummary ?? productName, quantity, unitPrice }];
+  if (productNames.length > 0) {
+    lineItems = [];
+    for (let i = 0; i < productNames.length; i++) {
+      const name = productNames[i];
+      const quantityForItem = quantityValues[i] || "1";
+      const quantity = Number(quantityForItem);
+      if (!Number.isFinite(quantity) || quantity <= 0) return { success: false, error: `Invalid quantity "${quantityForItem}"` };
+      const itemPriceForItem = itemPriceValues[i];
+      const unitPrice = itemPriceForItem ? Number(itemPriceForItem) : totalAmount;
+      if (!Number.isFinite(unitPrice) || unitPrice < 0) return { success: false, error: `Invalid item price "${itemPriceForItem}"` };
+      lineItems.push({
+        sku: skuValues[i] || null,
+        name: variant && productNames.length === 1 ? `${name} (${variant})` : name,
+        quantity,
+        unitPrice,
+      });
+    }
   }
 
   const order: NormalizedOrder = {
