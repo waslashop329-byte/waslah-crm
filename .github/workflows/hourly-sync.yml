@@ -7,9 +7,13 @@ name: Hourly ops-system sync
 # even once, despite being correctly configured in code). GitHub Actions'
 # own scheduler has no such restriction and is free for a public/private
 # repo's own workflows, so this replaces Vercel Cron for this one job.
+# Schedule paused: the real integration (main_system / "Waslah Ops System")
+# was deactivated while stepping back to test against fake data instead —
+# no active integration means this would just call /api/sync and get back
+# "No matching active integration(s)" every hour, for nothing. Re-add the
+# `schedule:` trigger once a real integration (e.g. Easy Order) is active
+# again; `workflow_dispatch` is kept so it can still be run manually.
 on:
-  schedule:
-    - cron: "0 * * * *"
   workflow_dispatch: {}
 
 jobs:
