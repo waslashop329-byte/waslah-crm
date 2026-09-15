@@ -28,6 +28,24 @@ export interface RecentActivityItem {
   createdAt: string;
 }
 
+// A count query that silently returns 0 instead of the real number (from a
+// timeout, an RLS surprise, anything) is worse than one that's merely slow —
+// it looks like a valid answer. Every count in this file now goes through
+// this instead of a bare `.count ?? 0`: real errors get logged (visible in
+// server logs, unlike before) rather than disappearing into a misleading
+// zero. Found live: with the customer base past ~11,000, several of
+// getDashboardStats' then-13 concurrent count queries started intermittently
+// hitting statement timeouts under real contention — "Total Customers: 0"
+// on the dashboard while the CAC table on the very same page, from a
+// different query, correctly showed 11,698.
+function readCount(result: { count: number | null; error: { message: string } | null }, label: string): number {
+  if (result.error) {
+    console.error(`Dashboard count query failed (${label}):`, result.error.message);
+    return 0;
+  }
+  return result.count ?? 0;
+}
+
 export async function getDashboardStats(): Promise<DashboardStats> {
   const supabase = await createClient();
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -35,58 +53,11 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   const thirtyDaysAgoForAutomation = thirtyDaysAgo;
 
-  const [
-    totalCustomers,
-    newCustomers30d,
-    repeatCustomers,
-    excellentCustomers,
-    trustedCustomers,
-    atRiskCustomers,
-    highCancellationRiskCustomers,
-    inactiveCustomers,
-    vipTagged,
-    highValueTagged,
-    pendingFollowUps,
-    overdueFollowUps,
-    duplicateCandidates,
-  ] = await Promise.all([
-    supabase.from("customers").select("id", { count: "exact", head: true }).is("deleted_at", null),
-    supabase
-      .from("customers")
-      .select("id", { count: "exact", head: true })
-      .is("deleted_at", null)
-      .gte("customer_since", thirtyDaysAgo),
-    supabase.from("customers").select("id", { count: "exact", head: true }).is("deleted_at", null).gt("total_orders", 1),
-    supabase
-      .from("customers")
-      .select("id", { count: "exact", head: true })
-      .is("deleted_at", null)
-      .eq("score_category", "excellent"),
-    supabase
-      .from("customers")
-      .select("id", { count: "exact", head: true })
-      .is("deleted_at", null)
-      .eq("score_category", "trusted"),
-    supabase
-      .from("customers")
-      .select("id", { count: "exact", head: true })
-      .is("deleted_at", null)
-      .eq("score_category", "high_risk"),
-    // PostgREST has no column-to-column comparison filter — `customer_list_view`
-    // precomputes this as a real boolean column (see migration 0061); this used
-    // to be `.filter("cancelled_orders", "gt", "delivered_orders")` directly on
-    // `customers`, which silently always returned 0 (the filter errored, and
-    // `.count ?? 0` below swallowed the error).
-    supabase
-      .from("customer_list_view")
-      .select("id", { count: "exact", head: true })
-      .is("deleted_at", null)
-      .eq("cancelled_gt_delivered", true),
-    supabase
-      .from("customers")
-      .select("id", { count: "exact", head: true })
-      .is("deleted_at", null)
-      .or(`last_order_at.lt.${ninetyDaysAgo},last_order_at.is.null`),
+  const [customerCounts, vipTagged, highValueTagged, pendingFollowUps, overdueFollowUps, duplicateCandidates] = await Promise.all([
+    // 8 of the customer-table counts this used to run separately, collapsed
+    // into one query (migration 0069) — the single biggest source of the
+    // concurrent-query pile-up that caused the timeouts above.
+    supabase.rpc("get_dashboard_customer_counts", { thirty_days_ago: thirtyDaysAgo, ninety_days_ago: ninetyDaysAgo }).single(),
     supabase
       .from("customer_tags")
       .select("customer_id, tags!inner(name)", { count: "exact", head: true })
@@ -103,6 +74,11 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     supabase.from("duplicate_candidates").select("id", { count: "exact", head: true }).eq("status", "pending"),
   ]);
 
+  if (customerCounts.error) {
+    console.error("Dashboard customer-counts RPC failed:", customerCounts.error.message);
+  }
+  const counts = customerCounts.data;
+
   // Paged past PostgREST's 1000-row cap — real execution volume can exceed
   // it, and this needs every row for an accurate success rate.
   const automationRuns = await fetchAllRows<{ status: string }>((from, to) =>
@@ -112,19 +88,19 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     automationRuns.length > 0 ? Math.round((automationRuns.filter((run) => run.status === "completed").length / automationRuns.length) * 100) : null;
 
   return {
-    totalCustomers: totalCustomers.count ?? 0,
-    newCustomers30d: newCustomers30d.count ?? 0,
-    repeatCustomers: repeatCustomers.count ?? 0,
-    vipCustomers: vipTagged.count ?? 0,
-    highValueCustomers: highValueTagged.count ?? 0,
-    excellentCustomers: excellentCustomers.count ?? 0,
-    trustedCustomers: trustedCustomers.count ?? 0,
-    atRiskCustomers: atRiskCustomers.count ?? 0,
-    highCancellationRiskCustomers: highCancellationRiskCustomers.count ?? 0,
-    inactiveCustomers: inactiveCustomers.count ?? 0,
-    pendingFollowUps: pendingFollowUps.count ?? 0,
-    overdueFollowUps: overdueFollowUps.count ?? 0,
-    duplicateCandidates: duplicateCandidates.count ?? 0,
+    totalCustomers: counts?.total_customers ?? 0,
+    newCustomers30d: counts?.new_customers_30d ?? 0,
+    repeatCustomers: counts?.repeat_customers ?? 0,
+    vipCustomers: readCount(vipTagged, "vipCustomers"),
+    highValueCustomers: readCount(highValueTagged, "highValueCustomers"),
+    excellentCustomers: counts?.excellent_customers ?? 0,
+    trustedCustomers: counts?.trusted_customers ?? 0,
+    atRiskCustomers: counts?.at_risk_customers ?? 0,
+    highCancellationRiskCustomers: counts?.high_cancellation_risk_customers ?? 0,
+    inactiveCustomers: counts?.inactive_customers ?? 0,
+    pendingFollowUps: readCount(pendingFollowUps, "pendingFollowUps"),
+    overdueFollowUps: readCount(overdueFollowUps, "overdueFollowUps"),
+    duplicateCandidates: readCount(duplicateCandidates, "duplicateCandidates"),
     automationSuccessRate,
   };
 }
@@ -146,7 +122,7 @@ export async function getRevenueDeliveryStats(days = 30): Promise<RevenueDeliver
   const supabase = await createClient();
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-  const [{ count: ordersLast30d }, delivered, { count: cancelledLast30d }, { count: returnedLast30d }] = await Promise.all([
+  const [ordersLast30dResult, delivered, cancelledLast30dResult, returnedLast30dResult] = await Promise.all([
     supabase.from("orders").select("id", { count: "exact", head: true }).gte("ordered_at", since),
     // Paged past PostgREST's 1000-row cap — a real 30-day delivered-order
     // volume can exceed it, and this needs every row to sum revenue correctly.
@@ -154,21 +130,25 @@ export async function getRevenueDeliveryStats(days = 30): Promise<RevenueDeliver
     supabase.from("orders").select("id", { count: "exact", head: true }).eq("status", "cancelled").gte("ordered_at", since),
     supabase.from("orders").select("id", { count: "exact", head: true }).eq("status", "returned").gte("ordered_at", since),
   ]);
+  const ordersLast30d = readCount(ordersLast30dResult, "ordersLast30d");
+  const cancelledLast30d = readCount(cancelledLast30dResult, "cancelledLast30d");
+  const returnedLast30d = readCount(returnedLast30dResult, "returnedLast30d");
+
   const revenueLast30d = delivered.reduce((sum, o) => sum + o.total_amount, 0);
   const repeatRevenueLast30d = delivered
     .filter((o) => ((o.customers as unknown as { total_orders: number } | null)?.total_orders ?? 0) > 1)
     .reduce((sum, o) => sum + o.total_amount, 0);
 
-  const resolvedOrders = delivered.length + (cancelledLast30d ?? 0) + (returnedLast30d ?? 0);
+  const resolvedOrders = delivered.length + cancelledLast30d + returnedLast30d;
 
   return {
-    ordersLast30d: ordersLast30d ?? 0,
+    ordersLast30d,
     deliveredLast30d: delivered.length,
     revenueLast30d: round2(revenueLast30d),
     aovLast30d: delivered.length > 0 ? round2(revenueLast30d / delivered.length) : 0,
     repeatRevenueLast30d: round2(repeatRevenueLast30d),
     deliveryRate: resolvedOrders > 0 ? round1((delivered.length / resolvedOrders) * 100) : null,
-    returnRate: delivered.length + (returnedLast30d ?? 0) > 0 ? round1(((returnedLast30d ?? 0) / (delivered.length + (returnedLast30d ?? 0))) * 100) : null,
+    returnRate: delivered.length + returnedLast30d > 0 ? round1((returnedLast30d / (delivered.length + returnedLast30d)) * 100) : null,
   };
 }
 

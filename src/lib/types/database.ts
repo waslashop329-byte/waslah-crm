@@ -1211,6 +1211,19 @@ export type Database = {
         Args: { p_primary_id: string; p_secondary_id: string; p_actor_id: string };
         Returns: Json;
       };
+      get_dashboard_customer_counts: {
+        Args: { thirty_days_ago: string; ninety_days_ago: string };
+        Returns: {
+          total_customers: number;
+          new_customers_30d: number;
+          repeat_customers: number;
+          excellent_customers: number;
+          trusted_customers: number;
+          at_risk_customers: number;
+          high_cancellation_risk_customers: number;
+          inactive_customers: number;
+        }[];
+      };
     };
   };
 };
