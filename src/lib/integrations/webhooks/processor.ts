@@ -28,8 +28,25 @@ export async function processWebhookEvent(eventId: string): Promise<ProcessResul
   try {
     const provider = getProvider(event.source);
 
-    if (event.event_type.startsWith("order.")) {
+    if (event.event_type === "order.status_changed") {
+      // A status-only payload (e.g. EasyOrders' "Order Status Change") never
+      // carries the full set of fields normalizeOrder/syncOrder require —
+      // this bypasses that pipeline entirely rather than inventing values.
+      if (!provider.applyOrderStatusChange) throw new NonRetryableIntegrationError(`Provider "${event.source}" cannot apply status-only order updates`);
+      await provider.applyOrderStatusChange(event.payload);
+    } else if (event.event_type.startsWith("order.")) {
       if (!provider.normalizeOrder) throw new NonRetryableIntegrationError(`Provider "${event.source}" cannot normalize orders`);
+
+      // Some sources embed the customer inline in the order webhook and
+      // never send a separate customer.* event — sync that customer first,
+      // since syncOrder() requires it to already exist.
+      if (provider.deriveCustomerFromOrder) {
+        const derivedCustomer = await provider.deriveCustomerFromOrder(event.payload);
+        const validatedCustomer = validateNormalizedCustomer(derivedCustomer);
+        if (!validatedCustomer.success) throw new NonRetryableIntegrationError(validatedCustomer.error);
+        await syncCustomer(validatedCustomer.data);
+      }
+
       const normalized = await provider.normalizeOrder(event.payload);
       const validated = validateNormalizedOrder(normalized);
       if (!validated.success) throw new NonRetryableIntegrationError(validated.error);

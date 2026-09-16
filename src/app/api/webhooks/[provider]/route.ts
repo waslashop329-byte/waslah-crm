@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getProvider } from "@/lib/integrations/core/registry";
+import type { WebhookEnvelope } from "@/lib/integrations/core/provider";
 import { verifySignature } from "@/lib/integrations/webhooks/signature";
 import { computeIdempotencyKey } from "@/lib/integrations/webhooks/idempotency";
 import { isRateLimited } from "@/lib/integrations/webhooks/rate-limit";
@@ -9,17 +10,15 @@ import type { Json } from "@/lib/types/database";
 
 const UNIQUE_VIOLATION = "23505";
 
-interface WebhookEnvelope {
-  event_type?: string;
-  event_id?: string;
-}
-
+// Default envelope reader, used when a provider doesn't implement its own
+// resolveWebhookEvent() — assumes the source already sends {event_type,
+// event_id} in our own naming convention.
 function readEnvelope(payload: unknown): WebhookEnvelope {
-  if (typeof payload !== "object" || payload === null) return {};
+  if (typeof payload !== "object" || payload === null) return { event_type: "unknown", event_id: null };
   const record = payload as Record<string, unknown>;
   return {
-    event_type: typeof record.event_type === "string" ? record.event_type : undefined,
-    event_id: typeof record.event_id === "string" ? record.event_id : undefined,
+    event_type: typeof record.event_type === "string" ? record.event_type : "unknown",
+    event_id: typeof record.event_id === "string" ? record.event_id : null,
   };
 }
 
@@ -31,9 +30,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ pr
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   }
 
-  try {
-    getProvider(providerSource); // throws if the source isn't registered
-  } catch {
+  const provider = (() => {
+    try {
+      return getProvider(providerSource);
+    } catch {
+      return null;
+    }
+  })();
+  if (!provider) {
     return NextResponse.json({ error: `Unknown provider "${providerSource}"` }, { status: 404 });
   }
 
@@ -46,21 +50,29 @@ export async function POST(request: NextRequest, context: { params: Promise<{ pr
     return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
   }
 
-  // Signature verification: only enforced when a secret is configured for
-  // this provider (env var <PROVIDER>_WEBHOOK_SECRET). Real sources must have
-  // one configured before going live; the mock provider intentionally has
-  // none, since it isn't a real external system to spoof.
-  const secret = process.env[`${providerSource.toUpperCase()}_WEBHOOK_SECRET`];
-  if (secret) {
-    const signatureHeader = request.headers.get("x-webhook-signature");
-    if (!verifySignature(rawBody, signatureHeader, secret)) {
+  // Auth: a provider with its own scheme (e.g. EasyOrders' raw `secret`
+  // header instead of a signed body) implements verifyWebhook() itself and
+  // decides whether/how to enforce it. Otherwise fall back to the default —
+  // HMAC-over-body, only enforced when a secret is configured (env var
+  // <PROVIDER>_WEBHOOK_SECRET). The mock provider has neither, since it isn't
+  // a real external system to spoof.
+  if (provider.verifyWebhook) {
+    if (!provider.verifyWebhook(rawBody, request.headers)) {
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    }
+  } else {
+    const secret = process.env[`${providerSource.toUpperCase()}_WEBHOOK_SECRET`];
+    if (secret) {
+      const signatureHeader = request.headers.get("x-webhook-signature");
+      if (!verifySignature(rawBody, signatureHeader, secret)) {
+        return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+      }
     }
   }
 
-  const envelope = readEnvelope(payload);
-  const eventType = envelope.event_type ?? "unknown";
-  const externalEventId = envelope.event_id ?? null;
+  const envelope = provider.resolveWebhookEvent ? provider.resolveWebhookEvent(payload) : readEnvelope(payload);
+  const eventType = envelope.event_type;
+  const externalEventId = envelope.event_id;
   const idempotencyKey = computeIdempotencyKey(providerSource, eventType, externalEventId, rawBody);
 
   const supabase = createAdminClient();

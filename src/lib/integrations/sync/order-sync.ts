@@ -7,7 +7,7 @@ import { ORDER_STATUS_EVENT } from "@/lib/events/event-types";
 import { RetryableIntegrationError } from "@/lib/integrations/core/errors";
 import { mapExternalProduct } from "@/lib/integrations/mappers/product-mapper";
 import { createNote } from "@/lib/services/note-service";
-import type { NormalizedOrder } from "@/lib/integrations/types/normalized";
+import type { NormalizedOrder, NormalizedOrderStatus } from "@/lib/integrations/types/normalized";
 
 export interface OrderSyncResult {
   orderId: string;
@@ -23,6 +23,18 @@ export class CustomerNotSyncedError extends RetryableIntegrationError {
   constructor(source: string, customerExternalId: string) {
     super(`No customer found for ${source}:${customerExternalId} — sync customers before orders that reference them.`);
     this.name = "CustomerNotSyncedError";
+  }
+}
+
+// Same reasoning as CustomerNotSyncedError: a status-only webhook (e.g.
+// EasyOrders' "Order Status Change", which carries no total/customer/date
+// fields — only order_id + old/new status) can arrive before, or racing,
+// the "Order Created" webhook for the same order. Retryable so it resolves
+// itself once that one lands.
+export class OrderNotSyncedError extends RetryableIntegrationError {
+  constructor(source: string, externalOrderId: string) {
+    super(`No order found for ${source}:${externalOrderId} — the order-created event may not have arrived yet.`);
+    this.name = "OrderNotSyncedError";
   }
 }
 
@@ -179,6 +191,76 @@ export async function syncOrder(order: NormalizedOrder, actorId?: string | null)
   }
 
   return { orderId, customerId, created, statusChanged };
+}
+
+interface OrderStatusUpdate {
+  status: NormalizedOrderStatus;
+  confirmed_at?: string;
+  shipped_at?: string;
+  delivered_at?: string;
+  cancelled_at?: string;
+  returned_at?: string;
+}
+
+const STATUS_TIMESTAMP_FIELD: Partial<Record<NormalizedOrderStatus, Exclude<keyof OrderStatusUpdate, "status">>> = {
+  confirmed: "confirmed_at",
+  shipped: "shipped_at",
+  delivered: "delivered_at",
+  cancelled: "cancelled_at",
+  returned: "returned_at",
+};
+
+// For sources whose status-change webhook carries only order_id + old/new
+// status (EasyOrders' "Order Status Change" event has no total/customer/date
+// fields at all) — updating via the full syncOrder() upsert would require
+// inventing values for every other required NormalizedOrder field, which
+// would silently overwrite the order's real total_amount/ordered_at with
+// garbage on every status change. This only ever touches status + the
+// matching terminal timestamp, and no-ops if the status didn't actually
+// change (same idempotency guarantee as syncOrder's own update branch).
+export async function updateOrderStatus(source: string, externalOrderId: string, newStatus: NormalizedOrderStatus): Promise<OrderSyncResult> {
+  const supabase = createAdminClient();
+
+  const { data: existingOrder } = await supabase
+    .from("orders")
+    .select("id, customer_id, status")
+    .eq("source", source)
+    .eq("external_order_id", externalOrderId)
+    .maybeSingle();
+
+  if (!existingOrder) {
+    throw new OrderNotSyncedError(source, externalOrderId);
+  }
+
+  const { id: orderId, customer_id: customerId, status: oldStatus } = existingOrder;
+  const statusChanged = oldStatus !== newStatus;
+
+  if (statusChanged) {
+    const timestampField = STATUS_TIMESTAMP_FIELD[newStatus];
+    const update: OrderStatusUpdate = { status: newStatus };
+    if (timestampField) update[timestampField] = new Date().toISOString();
+
+    const { error } = await supabase.from("orders").update(update).eq("id", orderId);
+    if (error) throw new Error(`Failed to update order status: ${error.message}`);
+
+    await recordCustomerEvent({
+      customerId,
+      eventType: `order.${newStatus}`,
+      title: "Order status changed",
+      description: `${oldStatus} → ${newStatus}`,
+      relatedOrderId: orderId,
+    });
+
+    await recalculateCustomerStats(customerId);
+    await dispatchEvent("order.updated", { orderId, customerId, status: newStatus });
+
+    const namedStatusEvent = ORDER_STATUS_EVENT[newStatus];
+    if (namedStatusEvent) {
+      await dispatchEvent(namedStatusEvent, { orderId, customerId });
+    }
+  }
+
+  return { orderId, customerId, created: false, statusChanged };
 }
 
 // Deliberately conservative compared to product-import-service.ts's

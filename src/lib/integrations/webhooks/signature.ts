@@ -20,3 +20,16 @@ export function verifySignature(rawBody: string, signatureHeader: string | null,
   if (providedBuffer.length !== expectedBuffer.length) return false;
   return timingSafeEqual(providedBuffer, expectedBuffer);
 }
+
+// For sources that send the raw shared secret itself in a header (e.g.
+// EasyOrders' `secret: <value>`) instead of signing the body — no HMAC
+// computed, just a constant-time comparison against the configured secret.
+export function verifySharedSecret(provided: string | null, expected: string): boolean {
+  if (!provided) return false;
+
+  const providedBuffer = Buffer.from(provided, "utf8");
+  const expectedBuffer = Buffer.from(expected, "utf8");
+
+  if (providedBuffer.length !== expectedBuffer.length) return false;
+  return timingSafeEqual(providedBuffer, expectedBuffer);
+}

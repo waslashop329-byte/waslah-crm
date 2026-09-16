@@ -25,6 +25,15 @@ export interface TestConnectionResult {
   message?: string;
 }
 
+// What the webhook route needs to know about an inbound event before it can
+// store/dispatch it: the canonical event_type it should be filed under
+// (customer.*/order.*/order.status_changed) and, when the source provides
+// one, a stable id for idempotency.
+export interface WebhookEnvelope {
+  event_type: string;
+  event_id: string | null;
+}
+
 export interface IntegrationProvider {
   readonly source: string;
   readonly capabilities: readonly ProviderCapability[];
@@ -41,6 +50,29 @@ export interface IntegrationProvider {
   // there's exactly one place per provider that knows the raw shape.
   normalizeCustomer?(raw: unknown): Promise<NormalizedCustomer>;
   normalizeOrder?(raw: unknown): Promise<NormalizedOrder>;
+
+  // A source whose "order created" webhook embeds full customer data inline
+  // (no separate customer.* event ever arrives, e.g. EasyOrders) implements
+  // this so the processor can sync that customer first — normalizeOrder
+  // alone can't, since syncOrder() requires the customer to already exist.
+  deriveCustomerFromOrder?(raw: unknown): Promise<NormalizedCustomer>;
+
+  // A source whose status-change webhook carries only an id + old/new status
+  // (no full order fields) implements this instead of relying on
+  // normalizeOrder + syncOrder, which would need every required order field.
+  applyOrderStatusChange?(raw: unknown): Promise<void>;
+
+  // Only needed when a source's auth scheme isn't the default HMAC-over-body
+  // (route.ts falls back to that when this is absent) — e.g. EasyOrders
+  // sends the raw shared secret itself in a `secret` header.
+  verifyWebhook?(rawBody: string, headers: Headers): boolean;
+
+  // Only needed when a source's webhook payload doesn't carry {event_type,
+  // event_id} in that shape (route.ts falls back to reading those fields
+  // directly when this is absent) — e.g. EasyOrders' "Order Created" payload
+  // has no event_type at all, and "Order Status Change" uses "order-status-
+  // update" rather than our "order.*"/"customer.*" convention.
+  resolveWebhookEvent?(payload: unknown): WebhookEnvelope;
 }
 
 export function providerSupports(provider: IntegrationProvider, capability: ProviderCapability): boolean {
